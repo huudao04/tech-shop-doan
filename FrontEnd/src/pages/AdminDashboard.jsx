@@ -6,7 +6,7 @@ import {
   DollarCircleOutlined, 
   ClockCircleOutlined
 } from '@ant-design/icons';
-import axios from 'axios';
+import API from '../utils/axiosClient';
 
 // Ép cấu hình reset CSS của Ant Design để đồng bộ font và bảng
 import 'antd/dist/reset.css'; 
@@ -25,7 +25,7 @@ const AdminDashboard = () => {
   const fetchStats = async () => {
     try {
       setLoading(true);
-      const res = await axios.get('http://localhost:5000/api/admin/dashboard-stats');
+      const res = await API.get('/api/admin/dashboard-stats');
       setStats(res.data);
     } catch (error) {
       console.error(error);

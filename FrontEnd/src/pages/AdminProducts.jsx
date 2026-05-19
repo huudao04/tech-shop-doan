@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Table, Button, Typography, Modal, Form, Input, InputNumber, Select, message, Space, Upload, Popconfirm } from 'antd';
 import { PlusOutlined, DeleteOutlined, EditOutlined } from '@ant-design/icons';
-import axios from 'axios';
+import API from '../utils/axiosClient';
 
 const { Title } = Typography;
 
@@ -17,7 +17,7 @@ const AdminProducts = () => {
   // Hàm lấy danh sách sản phẩm từ MongoDB
   const fetchProducts = async () => {
     try {
-      const res = await axios.get('http://localhost:5000/api/products');
+      const res = await API.get('/api/products');
       setProducts(res.data);
     } catch (error) {
       message.error('Không thể tải danh sách sản phẩm');
@@ -28,8 +28,8 @@ const AdminProducts = () => {
   const fetchMetadata = async () => {
     try {
       const [catRes, brandRes] = await Promise.all([
-        axios.get('http://localhost:5000/api/categories'),
-        axios.get('http://localhost:5000/api/brands')
+        API.get('/api/categories'),
+        API.get('/api/brands')
       ]);
       setCategories(catRes.data);
       setBrands(brandRes.data);
@@ -94,7 +94,7 @@ const AdminProducts = () => {
 
     // 1. Nếu có file ảnh mới, tiến hành gọi API upload
     if (hasNewFiles) {
-      const uploadRes = await axios.post('http://localhost:5000/api/upload', formData, {
+      const uploadRes = await API.post('/api/upload', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
       // Gộp các tên file mới được trả về vào mảng chung
@@ -105,10 +105,10 @@ const AdminProducts = () => {
     const productData = { ...values, image: finalImageArray };
 
     if (editingProduct) {
-      await axios.put(`http://localhost:5000/api/products/${editingProduct._id}`, productData);
+      await API.put(`/api/products/${editingProduct._id}`, productData);
       message.success('Cập nhật sản phẩm thành công!');
     } else {
-      await axios.post('http://localhost:5000/api/products', productData);
+      await API.post('/api/products', productData);
       message.success('Thêm sản phẩm thành công!');
     }
     setIsModalOpen(false);
@@ -122,7 +122,7 @@ const AdminProducts = () => {
 
   const handleDelete = async (id) => {
     try {
-      await axios.delete(`http://localhost:5000/api/products/${id}`);
+      await API.delete(`/api/products/${id}`);
       message.success('Đã xóa sản phẩm!');
       fetchProducts();
     } catch (error) {

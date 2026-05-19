@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Table, Tag, Select, Typography, message, Card, Popover } from 'antd';
 import { EyeOutlined } from '@ant-design/icons';
-import axios from 'axios';
+import API from '../utils/axiosClient';
 
 const { Title } = Typography;
 const { Option } = Select;
@@ -13,7 +13,7 @@ const AdminOrders = () => {
   const fetchOrders = async () => {
     try {
       setLoading(true);
-      const res = await axios.get('http://localhost:5000/api/admin/orders');
+      const res = await API.get('/api/admin/orders');
       setOrders(res.data);
     } catch (error) {
       message.error('Không thể tải danh sách đơn hàng');
@@ -29,7 +29,7 @@ const AdminOrders = () => {
   // Xử lý đổi trạng thái đơn hàng (Đồng bộ qua API PUT admin)
   const handleStatusChange = async (orderId, newStatus) => {
     try {
-      await axios.put(`http://localhost:5000/api/admin/orders/${orderId}`, { status: newStatus });
+      await API.put(`/api/admin/orders/${orderId}`, { status: newStatus });
       message.success('Cập nhật trạng thái đơn hàng thành công!');
       fetchOrders(); // Reload lại data
     } catch (error) {

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Table, Button, Rate, Space, Avatar, message, Popconfirm, Card, Typography, Modal, Form, Input, Select } from 'antd';
 import { DeleteOutlined, CommentOutlined, PlusOutlined, EditOutlined } from '@ant-design/icons';
-import axios from 'axios';
+import API from '../utils/axiosClient';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -23,7 +23,7 @@ const AdminReviews = () => {
   const fetchReviews = async () => {
     setLoading(true);
     try {
-      const response = await axios.get('http://localhost:5000/api/admin/reviews');
+      const response = await API.get('/api/admin/reviews');
       setReviews(response.data);
     } catch (error) {
       console.error('Lỗi lấy danh sách đánh giá:', error);
@@ -36,7 +36,7 @@ const AdminReviews = () => {
   // Lấy danh sách sản phẩm phục vụ bài toán Fake Review
   const fetchProducts = async () => {
     try {
-      const response = await axios.get('http://localhost:5000/api/products');
+      const response = await API.get('/api/products');
       setProducts(response.data);
     } catch (error) {
       console.error('Lỗi lấy danh sách sản phẩm:', error);
@@ -51,7 +51,7 @@ const AdminReviews = () => {
   // 2. Xóa phản hồi/đánh giá
   const handleDelete = async (id) => {
     try {
-      const response = await axios.delete(`http://localhost:5000/api/admin/reviews/${id}`);
+      const response = await API.delete(`/api/admin/reviews/${id}`);
       if (response.data.success) {
         message.success('Đã xóa phản hồi thành công!');
         setReviews(reviews.filter((review) => review._id !== id));
@@ -84,14 +84,14 @@ const AdminReviews = () => {
       const values = await form.validateFields();
       if (editingReview) {
         // Trường hợp SỬA
-        const response = await axios.put(`http://localhost:5000/api/admin/reviews/${editingReview._id}`, values);
+        const response = await API.put(`/api/admin/reviews/${editingReview._id}`, values);
         if (response.data.success) {
           message.success('Cập nhật đánh giá thành công!');
           setReviews(reviews.map(item => item._id === editingReview._id ? response.data.review : item));
         }
       } else {
         // Trường hợp THÊM MỚI
-        const response = await axios.post('http://localhost:5000/api/admin/reviews', values);
+        const response = await API.post('/api/admin/reviews', values);
         if (response.data.success) {
           message.success('Thêm đánh giá fake thành công!');
           setReviews([response.data.review, ...reviews]);
@@ -114,7 +114,7 @@ const AdminReviews = () => {
   const handleReplySubmit = async () => {
     try {
       const values = await replyForm.validateFields();
-      const response = await axios.patch(`http://localhost:5000/api/admin/reviews/${editingReview._id}/reply`, values);
+      const response = await API.patch(`/api/admin/reviews/${editingReview._id}/reply`, values);
       if (response.data.success) {
         message.success('Đã gửi phản hồi thành công!');
         setReviews(reviews.map(item => item._id === editingReview._id ? response.data.review : item));

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Card, Table, Typography, Spin, message, Row, Col } from 'antd';
 import { DollarCircleOutlined, ExportOutlined, ShoppingCartOutlined } from '@ant-design/icons';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, BarChart, Bar } from 'recharts';
-import axios from 'axios';
+import API from '../utils/axiosClient';
 
 import 'antd/dist/reset.css'; 
 
@@ -19,13 +19,13 @@ const AdminReports = () => {
     const fetchReportData = async () => {
       try {
         setLoading(true);
-        const statsRes = await axios.get('http://localhost:5000/api/admin/dashboard-stats');
+        const statsRes = await API.get('/api/admin/dashboard-stats');
         setStats(statsRes.data);
 
-        const chartRes = await axios.get('http://localhost:5000/api/admin/reports-chart');
+        const chartRes = await API.get('/api/admin/reports-chart');
         setChartData(chartRes.data);
 
-        const ordersRes = await axios.get('http://localhost:5000/api/admin/orders');
+        const ordersRes = await API.get('/api/admin/orders');
         const paidOrders = ordersRes.data.filter(
           order => order.status === 'PAID' || order.status === 'success' || order.paymentStatus === 'PAID'
         );
@@ -46,8 +46,8 @@ const AdminReports = () => {
       setExportLoading(true);
       message.loading({ content: 'Đang khởi tạo cấu trúc dữ liệu báo cáo...', key: 'exportKey' });
       
-      const response = await axios({
-        url: 'http://localhost:5000/api/admin/export-reports',
+      const response = await API({
+        url: '/api/admin/export-reports',
         method: 'GET',
         responseType: 'blob',
       });
