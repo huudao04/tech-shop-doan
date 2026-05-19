@@ -139,6 +139,39 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage: storage });
 
+// [USER & ADMIN] API Đổi mật khẩu
+app.put('/api/auth/change-password', authMiddleware, async (req, res) => {
+  try {
+    const { oldPassword, newPassword } = req.body;
+    const userId = req.user.id; // Lấy ID từ token đã verify qua authMiddleware
+
+    // 1. Tìm người dùng trong cơ sở dữ liệu
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy tài khoản!' });
+    }
+
+    // 2. Kiểm tra mật khẩu cũ xem có khớp không
+    const isMatch = await bcrypt.compare(oldPassword, user.password);
+    if (!isMatch) {
+      return res.status(400).json({ success: false, message: 'Mật khẩu cũ không chính xác!' });
+    }
+
+    // 3. Kiểm tra mật khẩu mới trùng mật khẩu cũ không (Optional nâng cao)
+    if (oldPassword === newPassword) {
+      return res.status(400).json({ success: false, message: 'Mật khẩu mới không được trùng với mật khẩu cũ!' });
+    }
+
+    // 4. Mã hóa (Hash) mật khẩu mới và lưu lại
+    const salt = await bcrypt.genSalt(10);
+    user.password = await bcrypt.hash(newPassword, salt);
+    await user.save();
+
+    res.json({ success: true, message: 'Đổi mật khẩu thành công! Vui lòng đăng nhập lại.' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Lỗi hệ thống khi đổi mật khẩu' });
+  }
+});
 // ==========================================
 //             4. API AUTHENTICATION
 // ==========================================

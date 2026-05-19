@@ -1,6 +1,6 @@
-import { Layout, Menu, Input, Badge, Button } from 'antd';
-import { ShoppingCartOutlined, UserOutlined, SettingOutlined } from '@ant-design/icons';
-import { Outlet, Link } from 'react-router-dom';
+import { Layout, Menu, Input, Badge, Button, Dropdown, Avatar } from 'antd';
+import { ShoppingCartOutlined, UserOutlined, SettingOutlined, LogoutOutlined, ProfileOutlined } from '@ant-design/icons';
+import { Outlet, Link, useNavigate } from 'react-router-dom';
 import ChatAI from '../components/ChatBotAI.jsx';
 import { useCart } from '../context/CartContex.jsx';
 
@@ -8,6 +8,7 @@ const { Header, Content, Footer } = Layout;
 
 const UserLayout = () => {
   const { totalCount } = useCart();
+  const navigate = useNavigate();
 
   // Đọc thông tin người dùng từ localStorage
   const token = localStorage.getItem('token');
@@ -17,6 +18,30 @@ const UserLayout = () => {
     localStorage.clear();
     window.location.href = '/login';
   };
+
+  // Cấu hình Menu Dropdown khi click/hover vào Avatar
+  const menuUserItems = [
+    {
+      key: 'profile',
+      label: <Link to="/profile">Thông tin cá nhân</Link>,
+      icon: <ProfileOutlined />,
+    },
+    ...(user.role === 'admin' ? [{
+      key: 'admin',
+      label: <Link to="/admin">Trang Quản trị</Link>,
+      icon: <SettingOutlined />,
+    }] : []),
+    {
+      type: 'divider',
+    },
+    {
+      key: 'logout',
+      label: 'Đăng xuất',
+      icon: <LogoutOutlined />,
+      danger: true,
+      onClick: handleLogout,
+    },
+  ];
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
@@ -28,6 +53,7 @@ const UserLayout = () => {
           <Menu.Item key="1"><Link to="/">Trang chủ</Link></Menu.Item>
           <Menu.Item key="2"><Link to="/products">Sản phẩm</Link></Menu.Item>
         </Menu>
+        
         <Input.Search placeholder="Tìm sản phẩm..." style={{ width: 300, marginRight: 20 }} />
         
         <div style={{ display: 'flex', gap: '25px', fontSize: '20px', alignItems: 'center' }}>
@@ -37,17 +63,16 @@ const UserLayout = () => {
             </Badge>
           </Link>
 
-          {/* Logic hiển thị Trạng thái Đăng nhập / Phân quyền */}
+          {/* Logic hiển thị Avatar User mới */}
           {token ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '15px', fontSize: '14px' }}>
-              <span>Chào, <strong style={{ color: '#1677ff' }}>{user.name}</strong></span>
-              {user.role === 'admin' && (
-                <Link to="/admin">
-                  <Button type="dashed" icon={<SettingOutlined />}>Quản trị</Button>
-                </Link>
-              )}
-              <Button type="link" danger onClick={handleLogout} style={{ padding: 0 }}>Đăng xuất</Button>
-            </div>
+            <Dropdown menu={{ items: menuUserItems }} placement="bottomRight" arrow>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                <Avatar 
+                  icon={<UserOutlined />} 
+                />
+                <span style={{ fontSize: '14px', fontWeight: 500 }}>{user.name}</span>
+              </div>
+            </Dropdown>
           ) : (
             <Link to="/login" style={{ fontSize: '14px', color: '#000', display: 'flex', alignItems: 'center', gap: '5px' }}>
               <UserOutlined style={{ fontSize: '18px' }} /> Đăng nhập

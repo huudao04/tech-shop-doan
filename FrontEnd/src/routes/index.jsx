@@ -13,7 +13,7 @@ import Checkout from '../layouts/CheckOut';
 import Products from '../pages/Products';
 import Login from '../pages/Login';
 import ProtectedRoute from '../components/ProtectedRoute';
-
+import Profile from '../pages/Profile';
 export const router = createBrowserRouter([
   {
     path: '/login',
@@ -27,7 +27,8 @@ export const router = createBrowserRouter([
       { path: 'products', element: <Products /> },
       { path: 'product/:_id', element: <ProductDetail /> },
       { path: 'cart', element: <Cart /> },
-      { path: 'cart/checkout', element: <Checkout /> }
+      { path: 'cart/checkout', element: <Checkout /> },
+      { path: 'profile', element: <Profile /> }
     ],
   },
   {
