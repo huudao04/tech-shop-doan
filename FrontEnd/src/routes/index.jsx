@@ -14,6 +14,8 @@ import Products from '../pages/Products';
 import Login from '../pages/Login';
 import ProtectedRoute from '../components/ProtectedRoute';
 import Profile from '../pages/Profile';
+import UserOrders from '../pages/UserOrders';
+
 export const router = createBrowserRouter([
   {
     path: '/login',
@@ -28,7 +30,8 @@ export const router = createBrowserRouter([
       { path: 'product/:_id', element: <ProductDetail /> },
       { path: 'cart', element: <Cart /> },
       { path: 'cart/checkout', element: <Checkout /> },
-      { path: 'profile', element: <Profile /> }
+      { path: 'profile', element: <Profile /> },
+      { path: 'my-orders', element: <UserOrders /> }
     ],
   },
   {

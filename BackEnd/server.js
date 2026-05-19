@@ -74,6 +74,7 @@ const Review = mongoose.model('Review', reviewSchema);
 
 // Schema Đơn hàng
 const orderSchema = new mongoose.Schema({
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   orderId: { type: String, required: true, unique: true },
   customerName: { type: String, required: true },
   phoneNumber: { type: String, required: true },
@@ -405,9 +406,11 @@ app.delete('/api/admin/reviews/:id', authMiddleware, adminMiddleware, async (req
 // ==========================================
 
 // Đặt hàng mới (Public)
-app.post('/api/orders', async (req, res) => {
+app.post('/api/orders',authMiddleware, async (req, res) => {
   try {
     const { customerName, phoneNumber, shippingAddress, paymentMethod, items, totalPrice } = req.body;
+    const userId = req.user.id;
+
     for (const item of items) {
       const product = await Product.findById(item.productId); 
       if (!product || product.stock < item.quantity) return res.status(400).json({ success: false, message: `Sản phẩm không đủ hàng!` });
@@ -419,7 +422,7 @@ app.post('/api/orders', async (req, res) => {
     }
 
     const newOrder = new Order({
-      orderId, customerName, phoneNumber, shippingAddress, paymentMethod,
+      orderId, userId, customerName, phoneNumber, shippingAddress, paymentMethod,
       items: items.map(i => ({ productId: i.productId, name: i.name, price: i.price, quantity: i.quantity })),
       totalPrice
     });
@@ -592,6 +595,16 @@ app.get('/api/admin/export-reports', authMiddleware, adminMiddleware, async (req
     res.end();
   } catch (error) {
     res.status(500).json({ message: 'Không thể tạo file báo cáo Excel' });
+  }
+});
+// [CUSTOMER] Lấy danh sách đơn hàng cá nhân
+app.get('/api/customer/orders', authMiddleware, async (req, res) => {
+  try {
+    // Lọc các đơn hàng có userId trùng với ID người dùng hiện tại
+    const orders = await Order.find({ userId: req.user.id }).sort({ createdAt: -1 });
+    res.json(orders);
+  } catch (error) {
+    res.status(500).json({ message: "Không thể tải danh sách đơn hàng cá nhân" });
   }
 });
 

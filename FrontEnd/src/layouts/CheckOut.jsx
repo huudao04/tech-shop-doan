@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Form, Input, Button, Row, Col, Typography, Card, Divider, message, Radio, Space } from 'antd';
 import { useCart } from '../context/CartContex.jsx';
 import { useLocation, useNavigate } from 'react-router-dom'; // Import useLocation để nhận state
-import axios from 'axios';
+import API from '../utils/axiosClient';
 
 const { Title, Text } = Typography;
 
@@ -25,6 +25,8 @@ const Checkout = () => {
 
   setLoading(true);
   try {
+      // Lấy thông tin người dùng hiện tại từ localStorage để gắn vào đơn hàng
+    const savedUser = JSON.parse(localStorage.getItem('user') || '{}');
     // Đóng gói dữ liệu chuẩn bằng cách lấy _id trực tiếp từ cấu trúc DB sản phẩm
     const orderData = {
       customerName: values.customerName,
@@ -45,7 +47,7 @@ const Checkout = () => {
     console.log("Dữ liệu đơn hàng chuẩn bị gửi đi:", orderData);
 
     // Gọi API tạo đơn hàng đến Backend
-    const response = await axios.post('http://localhost:5000/api/orders', orderData);
+    const response = await API.post('/api/orders', orderData);
 
     if (response.data.success) {
       const createdOrder = response.data.order;
