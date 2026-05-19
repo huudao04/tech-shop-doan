@@ -1,14 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { Row, Col, Typography } from 'antd';
 import ProductCard from '../components/ProductCard';
-import axios from 'axios';
+import API from '../utils/axiosClient';
 const { Title } = Typography;
 
 const Home = () => {
 
   const [products, setProducts] = useState([]);
   useEffect(() => {
-  axios.get('http://localhost:5000/api/products').then(res => setProducts(res.data));
+  API.get('/api/products').then(res => setProducts(res.data));
   }, []);
 
   return (

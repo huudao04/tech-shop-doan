@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Form, Input, Button, Card, message, Tabs } from 'antd';
 import { UserOutlined, LockOutlined, MailOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import API from '../utils/axiosClient';
 
 const Login = () => {
   const [loading, setLoading] = useState(false);
@@ -15,7 +15,7 @@ const Login = () => {
   const handleLogin = async (values) => {
     setLoading(true);
     try {
-      const response = await axios.post('http://localhost:5000/api/auth/login', values);
+      const response = await API.post('/api/auth/login', values);
       if (response.data.success) {
         message.success('Đăng nhập hệ thống thành công!');
         
@@ -41,7 +41,7 @@ const Login = () => {
   const handleRegister = async (values) => {
     setLoading(true);
     try {
-      const response = await axios.post('http://localhost:5000/api/auth/register', {
+      const response = await API.post('/api/auth/register', {
         name: values.name,
         email: values.email,
         password: values.password

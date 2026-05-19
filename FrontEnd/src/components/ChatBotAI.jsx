@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { FloatButton, Popover, Input, Button, Typography, Card, Tag } from 'antd';
 import { RobotOutlined, SendOutlined, EllipsisOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
+import API from '../utils/axiosClient';
 
 const { Text } = Typography;
 
@@ -29,16 +30,12 @@ const ChatAI = () => {
     setIsTyping(true);
 
     try {
-      const response = await fetch('http://localhost:5000/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          message: currentMsg,
-          history: messages 
-        }),
+      const response = await API.post('/api/chat', {
+        message: currentMsg,
+        history: messages
       });
 
-      const data = await response.json();
+      const data = response.data;
       // data.content là trường dữ liệu trả về từ server.js
       const aiMsg = { role: 'ai', content: data.content || "Xin lỗi, tôi gặp trục trặc một chút." };
       setMessages(prev => [...prev, aiMsg]);

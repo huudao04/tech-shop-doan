@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Row, Col, Card, Button, Typography, Slider, Checkbox, Space, Empty, Spin, message } from 'antd';
 import { ShoppingCartOutlined, EyeOutlined, FilterOutlined } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
-import axios from 'axios';
+import API from '../utils/axiosClient';
 import { useCart } from '../context/CartContex.jsx';
 
 const { Title, Text } = Typography;
@@ -21,7 +21,7 @@ const Products = () => {
   useEffect(() => {
     const fetchProducts = async () => {
       try {
-        const response = await axios.get('http://localhost:5000/api/products');
+        const response = await API.get('/api/products');
         setProducts(response.data);
 
         // Tự động gom nhóm các Hãng (Brand) duy nhất có trong DB để làm danh sách checkbox bộ lọc

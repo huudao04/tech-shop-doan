@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import API from '../utils/axiosClient';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Row, Col, Typography, Button, Tag, InputNumber, Divider, message, Space, Spin, Rate, Card, Form, Input, List, Avatar } from 'antd';
 import { ShoppingCartOutlined, ThunderboltOutlined, ArrowLeftOutlined, UserOutlined, MessageOutlined } from '@ant-design/icons';
@@ -23,7 +23,7 @@ const ProductDetail = () => {
   // 1. Lấy dữ liệu chi tiết sản phẩm và các đánh giá từ API Backend
   const fetchProductAndReviews = () => {
     setLoading(true);
-    axios.get('http://localhost:5000/api/products/' + _id)
+    API.get('/api/products/' + _id)
       .then(response => {
         // Backend trả cố định: { product: { ... } }
         const productData = response.data?.product ?? null;
@@ -102,7 +102,7 @@ const ProductDetail = () => {
   const onFinishReview = async (values) => {
     setSubmitting(true);
     try {
-      const response = await axios.post(`http://localhost:5000/api/products/${_id}/reviews`, values);
+      const response = await API.post(`/api/products/${_id}/reviews`, values);
       if (response.data.success) {
         message.success('Cảm ơn bạn đã gửi đánh giá cho sản phẩm!');
         form.resetFields();

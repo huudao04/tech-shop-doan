@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Card, Descriptions, Badge, Avatar, Button, Space, Divider, Modal, Form, Input, message } from 'antd';
 import { UserOutlined, KeyOutlined, ArrowLeftOutlined, SolutionOutlined, LockOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import API from '../utils/axiosClient';
 
 const Profile = () => {
   const navigate = useNavigate();
@@ -27,16 +27,11 @@ const Profile = () => {
   const handleChangePassword = async (values) => {
     setLoading(true);
     try {
-      const response = await axios.put(
-        'http://localhost:5000/api/auth/change-password', 
+      const response = await API.put(
+        '/api/auth/change-password', 
         {
           oldPassword: values.oldPassword,
           newPassword: values.newPassword
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${token}` // Gửi token lên để backend xác thực
-          }
         }
       );
 
