@@ -80,7 +80,7 @@ const Checkout = () => {
         form.submit();
       } else {
         // Ship COD thì chuyển hướng sang màn thành công thông thường
-        navigate(`/cart`);
+        navigate(`/my-orders?status=success&orderId=${createdOrder._id}`);
       }
     }
   } catch (error) {

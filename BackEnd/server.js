@@ -80,8 +80,12 @@ const orderSchema = new mongoose.Schema({
   phoneNumber: { type: String, required: true },
   shippingAddress: { type: String, required: true },
   paymentMethod: { type: String, enum: ['COD', 'BANK_TRANSFER'], required: true },
-  paymentStatus: { type: String, enum: ['PENDING', 'PAID', 'FAILED'], default: 'PENDING' },
-  status: { type: String, enum: ['PENDING', 'CONFIRMED', 'SHIPPED', 'DELIVERED', 'CANCELLED'], default: 'PENDING' },
+  paymentStatus: { type: String, enum: ['Chờ thanh toán', 'Đã thanh toán', 'Thanh toán thất bại'], default: 'Chờ thanh toán' },
+  status: { 
+    type: String, 
+    enum: ['Chờ xác nhận', 'Đang đóng gói', 'Đang giao', 'Đã nhận', 'Hủy đơn hàng'], 
+    default: 'Chờ xác nhận' 
+  },
   items: [
     {
       productId: { type: mongoose.Schema.Types.ObjectId, ref: 'Product', required: true },
@@ -424,7 +428,8 @@ app.post('/api/orders',authMiddleware, async (req, res) => {
     const newOrder = new Order({
       orderId, userId, customerName, phoneNumber, shippingAddress, paymentMethod,
       items: items.map(i => ({ productId: i.productId, name: i.name, price: i.price, quantity: i.quantity })),
-      totalPrice
+      totalPrice,
+      status: 'Chờ xác nhận'
     });
 
     let paymentGateway = null;
@@ -432,9 +437,9 @@ app.post('/api/orders',authMiddleware, async (req, res) => {
       const frontendOrigin = req.get('origin') || 'http://localhost:5173';
       const checkoutFields = sepayClient.checkout.initOneTimePaymentFields({
         operation: 'PURCHASE', payment_method: 'BANK_TRANSFER', order_invoice_number: orderId,
-        order_amount: Number(totalPrice), currency: 'VND', order_description: `Thanh toan don hang ${orderId}`,
-        success_url: `${frontendOrigin}/cart?status=success&orderId=${orderId}`,
-        cancel_url: `${frontendOrigin}/cart?status=cancel&orderId=${orderId}`
+        order_amount: Number(totalPrice), currency: 'VND', order_description: `Thanh toán đơn hàng ${orderId}`,
+        success_url: `${frontendOrigin}/my-orders?status=success&orderId=${orderId}`,
+        cancel_url: `${frontendOrigin}/my-orders?status=cancel&orderId=${orderId}`
       });
       const checkoutUrl = sepayClient.checkout.initCheckoutUrl();
       newOrder.paymentUrl = checkoutUrl;
@@ -459,13 +464,94 @@ app.post('/api/sepay-webhook', async (req, res) => {
     if (!order || order.paymentStatus === 'PAID') return res.json({ success: true });
 
     if (amount >= order.totalPrice) {
-      order.paymentStatus = 'PAID';
-      order.status = 'CONFIRMED'; 
+      order.paymentStatus = 'Chờ thanh toán';
+      order.status = 'Chờ xác nhận'; 
       await order.save();
     }
     return res.json({ success: true });
   } catch (error) {
     res.status(500).json({ message: "Lỗi xử lý webhook" });
+  }
+});
+// =========================================================================
+// BỔ SUNG API CHO KHÁCH HÀNG THAO TÁC (Tự hủy đơn & Xác nhận đã nhận hàng)
+// =========================================================================
+
+// Khách hàng hủy đơn (Chỉ được hủy khi đang "Chờ xác nhận")
+app.patch('/api/customer/orders/:id/cancel', authMiddleware, async (req, res) => {
+  try {
+    const order = await Order.findOne({ _id: req.params.id, userId: req.user.id });
+    if (!order) return res.status(404).json({ success: false, message: "Không tìm thấy đơn hàng!" });
+
+    if (order.status !== 'Chờ xác nhận') {
+      return res.status(400).json({ success: false, message: "Đơn hàng đã được xử lý, bạn không thể tự hủy!" });
+    }
+
+    // Hoàn lại số lượng tồn kho sản phẩm
+    for (const item of order.items) {
+      await Product.findByIdAndUpdate(item.productId, { $inc: { stock: item.quantity } });
+    }
+
+    order.status = 'Hủy đơn hàng';
+    if (order.paymentStatus === 'PENDING') order.paymentStatus = 'FAILED';
+    await order.save();
+
+    res.json({ success: true, message: "Bạn đã hủy đơn hàng thành công!", order });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Lỗi hệ thống khi khách hàng hủy đơn" });
+  }
+});
+
+// Khách hàng xác nhận đã nhận được hàng (Chỉ được bấm khi trạng thái là "Đang giao")
+app.patch('/api/customer/orders/:id/receive', authMiddleware, async (req, res) => {
+  try {
+    const order = await Order.findOne({ _id: req.params.id, userId: req.user.id });
+    if (!order) return res.status(404).json({ success: false, message: "Không tìm thấy đơn hàng!" });
+
+    if (order.status !== 'Đang giao') {
+      return res.status(400).json({ success: false, message: "Đơn hàng chưa được giao, không thể xác nhận!" });
+    }
+
+    order.status = 'Đã nhận';
+    order.paymentStatus = 'Đã thanh toán'; // Nếu đi COD thì khi nhận hàng coi như đã thanh toán
+    await order.save();
+
+    res.json({ success: true, message: "Xác nhận đã nhận hàng thành công. Cảm ơn bạn!", order });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Lỗi hệ thống khi xác nhận nhận hàng" });
+  }
+});
+
+// =========================================================================
+// SỬA API ADMIN CẬP NHẬT TRẠNG THÁI (Quyền hủy đè tối cao)
+// =========================================================================
+app.put('/api/admin/orders/:id', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const { status, paymentStatus } = req.body;
+    const order = await Order.findById(req.params.id);
+    if (!order) return res.status(404).json({ success: false, message: "Không tìm thấy đơn hàng" });
+
+    // Nếu trạng thái mới yêu cầu là Hủy Đơn Hàng -> Admin được quyền hủy đè mọi trạng thái (trừ Đã nhận)
+    if (status === 'Hủy đơn hàng' && order.status !== 'Hủy đơn hàng') {
+      if (order.status === 'Đã nhận') {
+        return res.status(400).json({ success: false, message: "Đơn hàng đã hoàn thành, không thể hủy đè!" });
+      }
+      // Hoàn lại số lượng tồn kho sản phẩm khi admin hủy
+      for (const item of order.items) {
+        await Product.findByIdAndUpdate(item.productId, { $inc: { stock: item.quantity } });
+      }
+      order.status = 'Hủy đơn hàng';
+      order.paymentStatus = 'FAILED';
+    } else {
+      // Các trạng thái tiến trình thông thường do Admin chỉ định (Đang đóng gói, Đang giao)
+      order.status = status;
+      if (paymentStatus) order.paymentStatus = paymentStatus;
+    }
+
+    await order.save();
+    res.json({ success: true, message: "Cập nhật trạng thái đơn thành công!", order });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Không thể cập nhật đơn hàng" });
   }
 });
 
@@ -513,14 +599,19 @@ app.get('/api/admin/orders/export-excel', authMiddleware, adminMiddleware, async
     worksheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: '1E88E5' } };
 
     orders.forEach((order) => {
-      worksheet.addRow({
-        orderId: order.orderId, customerName: order.customerName, phoneNumber: order.phoneNumber, shippingAddress: order.shippingAddress,
-        paymentMethod: order.paymentMethod === 'COD' ? 'Nhận hàng (COD)' : 'Chuyển khoản',
-        paymentStatus: order.paymentStatus === 'PAID' ? 'Đã thanh toán' : (order.paymentStatus === 'FAILED' ? 'Thất bại' : 'Chờ xử lý'),
-        status: order.status === 'PENDING' ? 'Chờ duyệt' : (order.status === 'CONFIRMED' ? 'Đã xác nhận' : (order.status === 'SHIPPED' ? 'Đang giao' : (order.status === 'DELIVERED' ? 'Đã giao' : 'Đã hủy'))),
-        totalPrice: order.totalPrice, createdAt: new Date(order.createdAt).toLocaleString('vi-VN'),
-      });
+    worksheet.addRow({
+      orderId: order.orderId, 
+      customerName: order.customerName, 
+      phoneNumber: order.phoneNumber, 
+      shippingAddress: order.shippingAddress,
+      paymentMethod: order.paymentMethod === 'COD' ? 'Nhận hàng (COD)' : 'Chuyển khoản',
+      paymentStatus: order.paymentStatus === 'PAID' ? 'Đã thanh toán' : (order.paymentStatus === 'FAILED' ? 'Thất bại' : 'Chờ xử lý'),
+      // Đồng bộ trạng thái Tiếng Việt chuẩn tại đây:
+      status: order.status, 
+      totalPrice: order.totalPrice, 
+      createdAt: new Date(order.createdAt).toLocaleString('vi-VN'),
     });
+  });
 
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', 'attachment; filename=' + `Bao_Cao_Don_Hang_${Date.now()}.xlsx`);
@@ -633,13 +724,25 @@ app.post('/api/chat', async (req, res) => {
 //             9. AUTOMATED CRON JOB
 // ==========================================
 cron.schedule('*/5 * * * *', async () => {
-  try {
-    const expirationTime = new Date(Date.now() - 15 * 60 * 1000); 
-    const expiredOrders = await Order.find({ paymentStatus: 'PENDING', createdAt: { $lt: expirationTime } });
+ try {
+    // Tìm các đơn hàng chưa thanh toán, phương thức là chuyển khoản và đã quá 5 phút
+    const expirationTime = new Date(Date.now() - 5 * 60 * 1000); 
+    const expiredOrders = await Order.find({ 
+      paymentStatus: 'Chờ thanh toán', 
+      paymentMethod: 'BANK_TRANSFER',
+      status: 'Chờ xác nhận',
+      createdAt: { $lt: expirationTime } 
+    });
+
     for (const order of expiredOrders) {
-      order.paymentStatus = 'FAILED'; 
-      order.status = 'CANCELLED';
+      // Hoàn kho trước khi hủy đơn tự động
+      for (const item of order.items) {
+        await Product.findByIdAndUpdate(item.productId, { $inc: { stock: item.quantity } });
+      }
+      order.paymentStatus = 'Thanh toán thất bại'; 
+      order.status = 'Hủy đơn hàng';
       await order.save();
+      console.log(`[Hệ thống] Đã tự động hủy đơn treo quá 5 phút: ${order.orderId}`);
     }
   } catch (error) {
     console.error('Lỗi khi quét và hủy đơn hàng treo:', error);

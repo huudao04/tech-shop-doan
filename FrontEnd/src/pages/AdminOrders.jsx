@@ -26,18 +26,17 @@ const AdminOrders = () => {
     fetchOrders();
   }, []);
 
-  // Xử lý đổi trạng thái đơn hàng (Đồng bộ qua API PUT admin)
+  // Xử lý đổi trạng thái đơn hàng (Đồng bộ qua API PUT tiếng Việt của admin)
   const handleStatusChange = async (orderId, newStatus) => {
     try {
       await API.put(`/api/admin/orders/${orderId}`, { status: newStatus });
       message.success('Cập nhật trạng thái đơn hàng thành công!');
-      fetchOrders(); // Reload lại data
+      fetchOrders(); 
     } catch (error) {
       message.error('Lỗi khi cập nhật trạng thái đơn hàng');
     }
   };
 
-  // Render danh sách sản phẩm trong đơn khi hover/click vào cột Chi tiết
   const renderItemsPopover = (items) => (
     <div className="max-w-md">
       <table className="w-full text-left text-xs border-collapse">
@@ -104,32 +103,70 @@ const AdminOrders = () => {
     },
     {
       title: 'Thanh toán',
-      dataIndex: 'paymentStatus',
-      key: 'paymentStatus',
-      render: (status) => {
+      key: 'paymentDisplay',
+      render: (_, record) => {
+        // Kiểm tra phương thức thanh toán
+        if (record.paymentMethod === 'COD') {
+          return (
+            <div>
+              <Tag color="blue" className="mt-1">Ship COD</Tag>
+            </div>
+          );
+        }
+
+        // Nếu là phương thức Chuyển khoản QR (BANK_TRANSFER)
+        const isPaid = record.paymentStatus === 'PAID' || record.paymentStatus === 'Đã thanh toán';
+        const isFailed = record.paymentStatus === 'FAILED' || record.paymentStatus === 'Thanh toán thất bại';
+
         let color = 'gold';
-        if (status === 'PAID') color = 'green';
-        if (status === 'FAILED') color = 'red';
-        return <Tag color={color}>{status}</Tag>;
+        let statusText = 'Chờ thanh toán';
+
+        if (isPaid) {
+          color = 'green';
+          statusText = 'Đã thanh toán';
+        } else if (isFailed) {
+          color = 'red';
+          statusText = 'Thanh toán thất bại';
+        }
+
+        return (
+          <div>
+            <div className="font-medium text-gray-700">Chuyển khoản QR</div>
+            <Tag color={color} className="mt-1">{statusText}</Tag>
+          </div>
+        );
       }
     },
     {
       title: 'Trạng thái vận đơn',
       dataIndex: 'status',
       key: 'status',
-      render: (status, record) => (
-        <Select
-          defaultValue={status}
-          style={{ width: 140 }}
-          onChange={(value) => handleStatusChange(record._id, value)}
-          className="font-medium"
-        >
-          <Option value="PROCESSING"><span className="text-blue-600">PROCESSING</span></Option>
-          <Option value="SHIPPED"><span className="text-purple-600">SHIPPED</span></Option>
-          <Option value="DELIVERED"><span className="text-green-600">DELIVERED</span></Option>
-          <Option value="CANCELLED"><span className="text-gray-400">CANCELLED</span></Option>
-        </Select>
-      )
+      render: (status, record) => {
+        // Logic khóa hộp chọn: 
+        // Nếu là đơn Chuyển khoản QR nhưng CHƯA thanh toán thành công thì khóa cứng (disabled)
+        const isQrNotPaid = record.paymentMethod === 'BANK_TRANSFER' && 
+                            record.paymentStatus !== 'Đã thanh toán'
+
+        // Đơn hàng đã hoàn thành ('Đã nhận'), đã hủy, hoặc đơn QR chưa thanh toán thì không cho Admin đổi trạng thái
+        const isDisabled = status === 'Đã nhận' || status === 'Hủy đơn hàng' || isQrNotPaid;
+
+        return (
+          <Select
+            value={status}
+            style={{ width: 170 }}
+            onChange={(value) => handleStatusChange(record._id, value)}
+            className="font-medium"
+            disabled={isDisabled}
+            placeholder={isQrNotPaid ? "Chờ khách quét QR" : "Chọn trạng thái"}
+          >
+            <Option value="Chờ xác nhận"><span className="text-orange-500">Chờ xác nhận</span></Option>
+            <Option value="Đang đóng gói"><span className="text-cyan-600">Đang đóng gói</span></Option>
+            <Option value="Đang giao"><span className="text-purple-600">Đang giao</span></Option>
+            <Option value="Đã nhận" disabled><span className="text-green-600">Đã nhận</span></Option>
+            <Option value="Hủy đơn hàng"><span className="text-red-500 font-bold">Hủy đơn hàng</span></Option>
+          </Select>
+        );
+      }
     }
   ];
 

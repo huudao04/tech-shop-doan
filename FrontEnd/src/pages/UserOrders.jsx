@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Tag, Typography, message, Card, Popover } from 'antd';
-import { EyeOutlined, ClockCircleOutlined } from '@ant-design/icons';
+import { Table, Tag, Typography, message, Card, Popover, Button, Popconfirm } from 'antd';
+import { EyeOutlined, ClockCircleOutlined, CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons';
 import API from '../utils/axiosClient'; 
 
 const { Title } = Typography;
@@ -25,7 +25,28 @@ const UserOrders = () => {
     fetchMyOrders();
   }, []);
 
-  // Render danh sách sản phẩm trong Popover khi click xem chi tiết
+  // Người dùng chủ động hủy đơn hàng
+  const handleCancelOrder = async (id) => {
+    try {
+      await API.patch(`/api/customer/orders/${id}/cancel`);
+      message.success('Đã hủy đơn hàng thành công!');
+      fetchMyOrders();
+    } catch (error) {
+      message.error(error.response?.data?.message || 'Không thể hủy đơn hàng');
+    }
+  };
+
+  // Người dùng xác nhận đã nhận được hàng
+  const handleReceiveOrder = async (id) => {
+    try {
+      await API.patch(`/api/customer/orders/${id}/receive`);
+      message.success('Cảm ơn bạn đã xác nhận nhận hàng thành công!');
+      fetchMyOrders();
+    } catch (error) {
+      message.error('Xác nhận nhận hàng thất bại');
+    }
+  };
+
   const renderItemsPopover = (items) => (
     <div className="max-w-md">
       <table className="w-full text-left text-xs border-collapse">
@@ -73,9 +94,9 @@ const UserOrders = () => {
       dataIndex: 'items',
       key: 'items',
       render: (items) => (
-        <Popover content={renderItemsPopover(items)} title="Sản phẩm đã mua" trigger="click">
+        <Popover content={renderItemsPopover(items)} trigger="click">
           <span className="text-blue-500 hover:text-blue-700 cursor-pointer flex items-center gap-1">
-            <EyeOutlined /> Xem ({items?.reduce((sum, i) => sum + i.quantity, 0)} sản phẩm)
+            <EyeOutlined />  {items?.reduce((sum, i) => sum + i.quantity, 0)} sản phẩm
           </span>
         </Popover>
       )
@@ -88,27 +109,90 @@ const UserOrders = () => {
     },
     {
       title: 'Thanh toán',
-      dataIndex: 'paymentStatus',
-      key: 'paymentStatus',
-      render: (status) => {
+      key: 'paymentDisplay',
+      render: (_, record) => {
+        // Nếu chọn COD -> Trả về text "Ship COD" luôn
+        if (record.paymentMethod === 'COD') {
+          return (
+            <div>
+              <Tag color="blue" className="mt-0.5">Ship COD</Tag>
+            </div>
+          );
+        }
+
+        // Nếu chọn Chuyển khoản QR
+        const isPaid = record.paymentStatus === 'PAID' || record.paymentStatus === 'Đã thanh toán';
+        const isFailed = record.paymentStatus === 'FAILED' || record.paymentStatus === 'Thanh toán thất bại';
+
         let color = 'gold';
-        if (status === 'PAID') color = 'green';
-        if (status === 'FAILED') color = 'red';
-        return <Tag color={color}>{status}</Tag>;
+        let statusText = 'Chờ thanh toán';
+
+        if (isPaid) {
+          color = 'green';
+          statusText = 'Đã thanh toán';
+        } else if (isFailed) {
+          color = 'red';
+          statusText = 'Thanh toán thất bại';
+        }
+
+        return (
+          <div>
+            <span className="text-xs text-gray-500 block">Chuyển khoản QR</span>
+            <Tag color={color} className="mt-0.5">{statusText}</Tag>
+          </div>
+        );
       }
     },
     {
-      title: 'Trạng thái vận chuyển',
+      title: 'Trạng thái đơn hàng',
       dataIndex: 'status',
       key: 'status',
       render: (status) => {
         let color = 'blue';
-        if (status === 'CONFIRMED') color = 'cyan';
-        if (status === 'SHIPPED') color = 'purple';
-        if (status === 'DELIVERED') color = 'green';
-        if (status === 'CANCELLED') color = 'gray';
+        if (status === 'Chờ xác nhận') color = 'orange';
+        if (status === 'Đang đóng gói') color = 'cyan';
+        if (status === 'Đang giao') color = 'purple';
+        if (status === 'Đã nhận') color = 'green';
+        if (status === 'Hủy đơn hàng') color = 'error';
         
         return <Tag color={color} className="font-medium">{status}</Tag>;
+      }
+    },
+    {
+      title: 'Thao tác',
+      key: 'actions',
+      render: (_, record) => {
+        // Nếu trạng thái là Chờ xác nhận, hiện nút Hủy
+        if (record.status === 'Chờ xác nhận') {
+          return (
+            <Popconfirm
+              title="Bạn chắc chắn muốn hủy đơn hàng này chứ?"
+              onConfirm={() => handleCancelOrder(record._id)}
+              okText="Đồng ý"
+              cancelText="Không"
+            >
+              <Button type="text" danger icon={<CloseCircleOutlined />} size="small">
+                Hủy đơn
+              </Button>
+            </Popconfirm>
+          );
+        }
+        // Nếu trạng thái là Đang giao, hiện nút Đã nhận hàng
+        if (record.status === 'Đang giao') {
+          return (
+            <Popconfirm
+              title="Bạn xác nhận đã nhận đầy đủ hàng và thanh toán thành công?"
+              onConfirm={() => handleReceiveOrder(record._id)}
+              okText="Xác nhận"
+              cancelText="Hủy"
+            >
+              <Button type="primary" ghost color="green" icon={<CheckCircleOutlined />} size="small">
+                Đã nhận hàng
+              </Button>
+            </Popconfirm>
+          );
+        }
+        return <Tag color="Brown" className="ml-1">Hoàn thành</Tag>;
       }
     }
   ];
