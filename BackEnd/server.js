@@ -44,6 +44,7 @@ const userSchema = new mongoose.Schema({
   email: { type: String, required: true, unique: true },
   password: { type: String, required: true },
   role: { type: String, enum: ['customer', 'admin'], default: 'customer' },
+  isActive: { type: Boolean, default: true },
   createdAt: { type: Date, default: Date.now }
 });
 const User = mongoose.model('User', userSchema);
@@ -212,6 +213,13 @@ app.post('/api/auth/login', async (req, res) => {
 
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) return res.status(400).json({ message: 'Email hoặc mật khẩu không chính xác!' });
+
+    if (user.isActive === false) {
+      return res.status(403).json({ 
+        success: false, 
+        message: 'Tài khoản của bạn đã bị khóa! Vui lòng liên hệ Admin để được hỗ trợ.' 
+      });
+    }
 
     const token = jwt.sign({ id: user._id, role: user.role }, JWT_SECRET, { expiresIn: '1d' });
 
@@ -686,6 +694,44 @@ app.get('/api/admin/export-reports', authMiddleware, adminMiddleware, async (req
     res.end();
   } catch (error) {
     res.status(500).json({ message: 'Không thể tạo file báo cáo Excel' });
+  }
+});
+// ==========================================
+//        BỔ SUNG: API ADMIN QUẢN LÝ USER
+// ==========================================
+
+// [ADMIN] Lấy danh sách toàn bộ tài khoản Khách hàng (customer)
+app.get('/api/admin/customers', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    // Chỉ lấy tài khoản có role là customer, không hiển thị mật khẩu vì bảo mật
+    const customers = await User.find({ role: 'customer' }).select('-password').sort({ createdAt: -1 });
+    res.json(customers);
+  } catch (error) {
+    res.status(500).json({ message: "Không thể tải danh sách khách hàng" });
+  }
+});
+
+// [ADMIN] Bật / Tắt trạng thái hoạt động (Khóa / Mở khóa) của khách hàng
+app.patch('/api/admin/customers/:id/toggle-status', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ success: false, message: "Không tìm thấy người dùng!" });
+    
+    if (user.role === 'admin') {
+      return res.status(400).json({ success: false, message: "Không thể thao tác trên tài khoản Admin khác!" });
+    }
+
+    // Đảo ngược trạng thái hiện tại
+    user.isActive = !user.isActive;
+    await user.save();
+
+    res.json({ 
+      success: true, 
+      message: `${user.isActive ? 'Mở khóa' : 'Khóa'} tài khoản thành công!`, 
+      user: { id: user._id, email: user.email, isActive: user.isActive } 
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Lỗi hệ thống khi cập nhật trạng thái người dùng" });
   }
 });
 // [CUSTOMER] Lấy danh sách đơn hàng cá nhân
