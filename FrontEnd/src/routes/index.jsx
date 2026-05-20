@@ -16,11 +16,15 @@ import Login from '../pages/Login';
 import ProtectedRoute from '../components/ProtectedRoute';
 import Profile from '../pages/Profile';
 import UserOrders from '../pages/UserOrders';
-
+import ResetPassword from '../pages/ResetPassword.jsx';
 export const router = createBrowserRouter([
   {
     path: '/login',
     element: <Login />
+  },
+  {
+    path: '/reset-password',
+    element: <ResetPassword />
   },
   {
     path: '/',

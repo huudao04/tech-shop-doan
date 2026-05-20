@@ -9,6 +9,7 @@ import fs from 'fs';
 import ExcelJS from 'exceljs';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import nodemailer from 'nodemailer';
 import { SePayPgClient } from 'sepay-pg-node';
 
 const JWT_SECRET = 'TECH_SHOP_SUPER_SECRET_KEY_2026';
@@ -26,7 +27,14 @@ const sepayClient = new SePayPgClient({
   merchant_id: 'SP-LIVE-NH783B44',   
   secret_key: 'spsk_live_FJhRQ7N56cZqs2CV78jUYt8GsbfSx8Wi'  
 });
-
+// CẤU HÌNH TRANSPORTER GỬI EMAIL (Cần lấy Mật khẩu ứng dụng - App Password của Gmail)
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: 'YOUR_EMAIL@gmail.com', // Thay bằng Gmail của shop
+    pass: 'YOUR_APP_PASSWORD'     // Thay bằng Mật khẩu ứng dụng 16 ký tự của Gmail
+  }
+});
 // ==========================================
 //             1. KẾT NỐI MONGODB
 // ==========================================
@@ -248,6 +256,128 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
+// Thêm API xử lý Đăng nhập Google
+app.post('/api/auth/google-login', async (req, res) => {
+  try {
+    const { email, name } = req.body;
+
+    // Tìm xem email này đã tồn tại trong DB chưa
+    let user = await User.findOne({ email });
+
+    if (!user) {
+      // Nếu chưa có, tạo tài khoản mới với mật khẩu ngẫu nhiên (hoặc rỗng)
+      const salt = await bcrypt.genSalt(10);
+      const randomPassword = Math.random().toString(36).slice(-8); // Tạo chuỗi ngẫu nhiên công khai ngầm
+      const hashedPassword = await bcrypt.hash(randomPassword, salt);
+
+      user = new User({
+        name,
+        email,
+        password: hashedPassword,
+        role: 'customer'
+      });
+      await user.save();
+    }
+
+    if (user.isActive === false) {
+      return res.status(403).json({ 
+        success: false, 
+        message: 'Tài khoản của bạn đã bị khóa!' 
+      });
+    }
+
+    // Tạo JWT token cho hệ thống TechShop của bạn
+    const token = jwt.sign({ id: user._id, role: user.role }, JWT_SECRET, { expiresIn: '1d' });
+
+    res.json({
+      success: true,
+      token,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Lỗi hệ thống khi đăng nhập Google' });
+  }
+});
+// API 1: Yêu cầu quên mật khẩu - Gửi Link về Email
+app.post('/api/auth/forgot-password', async (req, res) => {
+  try {
+    const { email } = req.body;
+    const user = await User.findOne({ email });
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Email này không tồn tại trên hệ thống!' });
+    }
+
+    // Tạo token khôi phục mật khẩu có thời hạn 15 phút
+    const resetToken = jwt.sign({ id: user._id }, JWT_SECRET, { expiresIn: '15m' });
+    
+    // Đường dẫn trỏ tới màn hình Reset Password ở Frontend (mặc định Port 5173 của Vite/React)
+    const frontendOrigin = req.get('origin') || 'http://localhost:5173';
+    const resetLink = `${frontendOrigin}/reset-password?token=${resetToken}`;
+
+    // Cấu hình nội dung email gửi đi
+    const mailOptions = {
+      from: '"TechShop Support" <YOUR_EMAIL@gmail.com>',
+      to: user.email,
+      subject: '[TechShop] Khôi phục mật khẩu tài khoản của bạn',
+      html: `
+        <div style="font-family: sans-serif; padding: 20px; color: #333;">
+          <h2>Xin chào ${user.name},</h2>
+          <p>Bạn đã yêu cầu khôi phục mật khẩu tại TechShop.</p>
+          <p>Vui lòng nhấn vào nút bấm bên dưới để tiến hành tạo mật khẩu mới. Đường dẫn này có hiệu lực trong vòng 15 phút.</p>
+          <a href="${resetLink}" style="display: inline-block; background: #1677ff; color: #fff; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-weight: bold;">Đặt lại mật khẩu</a>
+          <p style="margin-top: 20px; font-size: 12px; color: #777;">Nếu bạn không yêu cầu thao tác này, vui lòng bỏ qua email này.</p>
+        </div>
+      `
+    };
+
+    await transporter.sendMail(mailOptions);
+    res.json({ success: true, message: 'Liên kết đặt lại mật khẩu đã được gửi tới email của bạn!' });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ success: false, message: 'Lỗi hệ thống khi xử lý quên mật khẩu' });
+  }
+});
+
+// API 2: Thực hiện Đặt lại mật khẩu mới từ link Email
+app.post('/api/auth/reset-password', async (req, res) => {
+  try {
+    const { token, newPassword } = req.body;
+
+    if (!token) {
+      return res.status(400).json({ success: false, message: 'Mã xác thực không hợp lệ!' });
+    }
+
+    // Xác thực token xem có hợp lệ hoặc hết hạn 15 phút chưa
+    let decoded;
+    try {
+      decoded = jwt.verify(token, JWT_SECRET);
+    } catch (err) {
+      return res.status(400).json({ success: false, message: 'Liên kết đã hết hạn hoặc không hợp lệ!' });
+    }
+
+    const user = await User.findById(decoded.id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy tài khoản người dùng!' });
+    }
+
+    // Mã hóa mật khẩu mới và cập nhật vào DB
+    const salt = await bcrypt.genSalt(10);
+    user.password = await bcrypt.hash(newPassword, salt);
+    await user.save();
+
+    res.json({ success: true, message: 'Đặt lại mật khẩu mới thành công! Vui lòng đăng nhập lại.' });
+
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Lỗi hệ thống khi cập nhật mật khẩu mới' });
+  }
+});
 // ==========================================
 //             5. API PRODUCTS (PUBLIC & ADMIN)
 // ==========================================
