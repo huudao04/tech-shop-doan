@@ -110,20 +110,25 @@ const AdminReviews = () => {
     setIsReplyModalOpen(true);
   };
 
-  // 6. Submit gửi lời phản hồi từ admin
-  const handleReplySubmit = async () => {
-    try {
-      const values = await replyForm.validateFields();
-      const response = await API.patch(`/api/admin/reviews/${editingReview._id}/reply`, values);
-      if (response.data.success) {
-        message.success('Đã gửi phản hồi thành công!');
-        setReviews(reviews.map(item => item._id === editingReview._id ? response.data.review : item));
-        setIsReplyModalOpen(false);
-      }
-    } catch (error) {
-      console.error('Lỗi phản hồi:', error);
+  // Thay đổi hàm submit phản hồi từ Admin ở AdminReviews.jsx sang cấu trúc mới
+const handleReplySubmit = async () => {
+  try {
+    const values = await replyForm.validateFields();
+    // Thay đổi từ PATCH /reply cũ sang POST gửi trao đổi thảo luận chung mới
+    const response = await API.post(`/api/reviews/${editingReview._id}/discussion`, { comment: values.reply });
+    if (response.data.success) {
+      message.success('Đã gửi phản hồi vào chuỗi thảo luận thành công!');
+      
+      // Đồng bộ lại UI state của Admin table
+      setReviews(reviews.map(item => item._id === editingReview._id ? { ...item, discussions: response.data.review.discussions } : item));
+      setIsReplyModalOpen(false);
+      replyForm.resetFields();
     }
-  };
+  } catch (error) {
+    console.error('Lỗi phản hồi phía Admin:', error);
+    message.error('Không thể gửi phản hồi!');
+  }
+};
 
   // Cấu hình các cột hiển thị bảng Antd
   const columns = [
@@ -164,15 +169,21 @@ const AdminReviews = () => {
       render: (rating) => <Rate disabled defaultValue={rating} className="text-sm text-amber-400" />,
     },
     {
-      title: 'Nội dung bình luận & Phản hồi',
+      title: 'Nội dung bình luận & Thảo luận',
       key: 'content_section',
       render: (_, record) => (
         <div className="space-y-2">
-          <p className="text-gray-600 m-0 whitespace-pre-wrap">{record.comment}</p>
-          {record.reply && (
-            <div className="bg-gray-50 border-l-2 border-emerald-500 p-2 rounded text-sm">
-              <Text strong className="text-emerald-600 block text-xs">ADMIN PHẢN HỒI:</Text>
-              <p className="text-gray-600 m-0 italic">{record.reply}</p>
+          <p className="text-gray-800 font-medium m-0 whitespace-pre-wrap">{record.comment}</p>
+          
+          {/* Duyệt mảng các phản hồi trao đổi nếu có */}
+          {record.discussions && record.discussions.length > 0 && (
+            <div className="bg-gray-50 border-l-2 border-blue-400 p-2 rounded text-xs space-y-1">
+              <Text strong className="text-blue-600 block">LỊCH SỬ TRAO ĐỔI QUA LẠI ({record.discussions.length}):</Text>
+              {record.discussions.map((d, i) => (
+                <div key={i} className="text-gray-600">
+                  <span className="font-bold">{d.name} ({d.role === 'admin' ? 'Admin' : 'Khách'}):</span> {d.comment}
+                </div>
+              ))}
             </div>
           )}
         </div>

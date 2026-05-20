@@ -1,5 +1,5 @@
 import { Layout, Menu, Input, Badge, Button, Dropdown, Avatar } from 'antd';
-import { ShoppingCartOutlined, ShoppingOutlined, UserOutlined, SettingOutlined, LogoutOutlined, ProfileOutlined } from '@ant-design/icons';
+import { ShoppingCartOutlined, ShoppingOutlined, UserOutlined, SettingOutlined, LogoutOutlined, ProfileOutlined, CommentOutlined } from '@ant-design/icons';
 import { Outlet, Link, useNavigate } from 'react-router-dom';
 import ChatAI from '../components/ChatBotAI.jsx';
 import { useCart } from '../context/CartContex.jsx';
@@ -26,11 +26,13 @@ const UserLayout = () => {
       label: <Link to="/profile">Thông tin cá nhân</Link>,
       icon: <ProfileOutlined />,
     },
-    {
+     ...(user.role === 'customer' ? [{  
       key: 'orders',
       label: <Link to="/my-orders">Đơn hàng của tôi</Link>,
       icon: <ShoppingOutlined />,
-    },
+    }] :
+     []),
+    
     ...(user.role === 'admin' ? [{
       key: 'admin',
       label: <Link to="/admin">Trang Quản trị</Link>,

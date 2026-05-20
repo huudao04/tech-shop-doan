@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import API from '../utils/axiosClient';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Row, Col, Typography, Button, Tag, InputNumber, Divider, message, Space, Spin, Rate, Card, Form, Input, List, Avatar } from 'antd';
-import { ShoppingCartOutlined, ThunderboltOutlined, ArrowLeftOutlined, UserOutlined, MessageOutlined } from '@ant-design/icons';
+import { Row, Col, Typography, Button, Tag, InputNumber, Divider, message, Space, Spin, Rate, Card, Form, Input, List, Avatar, Popconfirm, Modal } from 'antd';
+import { ShoppingCartOutlined, ThunderboltOutlined, ArrowLeftOutlined, UserOutlined, MessageOutlined, EditOutlined, DeleteOutlined, CommentOutlined } from '@ant-design/icons';
 import { useCart } from '../context/CartContex.jsx';
 
 const { Title, Text, Paragraph } = Typography;
@@ -10,24 +10,32 @@ const { TextArea } = Input;
 
 const ProductDetail = () => {
   const [product, setProduct] = useState(null);
-  const [reviews, setReviews] = useState([]); // State lưu danh sách đánh giá của sản phẩm
+  const [reviews, setReviews] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false); // Trạng thái khi đang gửi đánh giá
+  const [submitting, setSubmitting] = useState(false);
   const [quantity, setQuantity] = useState(1);
   const { _id } = useParams(); 
   const navigate = useNavigate();
   const [form] = Form.useForm();
+  const [editForm] = Form.useForm();
   
   const { cartItems, updateCart } = useCart();
 
-  // 1. Lấy dữ liệu chi tiết sản phẩm và các đánh giá từ API Backend
+  // Đọc thông tin tài khoản đang đăng nhập từ localStorage để so sánh quyền sở hữu review
+  const currentUser = JSON.parse(localStorage.getItem('user')) || null; 
+
+  // State phục vụ tính năng sửa đổi đánh giá
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingReviewId, setEditingReviewId] = useState(null);
+
+  // State phục vụ tính năng trao đổi thảo luận qua lại
+  const [replyInputs, setReplyInputs] = useState({}); // Lưu text nhập tạm thời cho từng ReviewId
+
   const fetchProductAndReviews = () => {
     setLoading(true);
     API.get('/api/products/' + _id)
       .then(response => {
-        // Backend trả cố định: { product: { ... } }
         const productData = response.data?.product ?? null;
-
         setProduct(productData);
         setReviews(response.data?.reviews ?? productData?.reviews ?? []);
       })
@@ -44,229 +52,204 @@ const ProductDetail = () => {
     fetchProductAndReviews();
   }, [_id]);
 
-  // 2. Hàm thêm vào giỏ hàng
   const handleAddToCart = (showSuccessMessage = true) => {
     if (!product) return null;
-    
     const existingItem = cartItems.find(item => item.id === product._id);
     let newCart;
-
     if (existingItem) {
-      newCart = cartItems.map(item =>
-        item.id === product._id ? { ...item, quantity: item.quantity + quantity } : item
-      );
+      newCart = cartItems.map(item => item.id === product._id ? { ...item, quantity: item.quantity + quantity } : item);
     } else {
-      newCart = [...cartItems, {
-        id: product._id,
-        name: product.name,
-        price: product.price,
-        image: product.image,
-        quantity: quantity
-      }];
+      newCart = [...cartItems, { id: product._id, name: product.name, price: product.price, image: product.image, quantity: quantity }];
     }
-
     updateCart(newCart);
-    if (showSuccessMessage) {
-      message.success(`🛒 Đã thêm ${quantity} sản phẩm "${product.name}" vào giỏ hàng!`);
-    }
+    if (showSuccessMessage) message.success(`🛒 Đã thêm ${quantity} sản phẩm vào giỏ hàng!`);
     return newCart;
   };
 
-  // 3. Hàm xử lý tính năng "Mua ngay"
   const handleBuyNow = () => {
     if (!product) return;
-
-    const itemToPay = [{
-      id: product._id,
-      name: product.name,
-      price: product.price,
-      image: product.image,
-      quantity: quantity
-    }];
-
+    const itemToPay = [{ id: product._id, name: product.name, price: product.price, image: product.image, quantity: quantity }];
     const totalPriceToPay = product.price * quantity;
-
-    message.loading('Đang chuẩn bị đơn hàng...', 1);
-    
-    setTimeout(() => {
-      navigate('/cart/checkout', {
-        state: {
-          checkoutItems: itemToPay,
-          checkoutTotalPrice: totalPriceToPay
-        }
-      });
-    }, 1000);
+    message.loading('Đang chuẩn bị đơn hàng...', 0.5);
+    setTimeout(() => { navigate('/cart/checkout', { state: { checkoutItems: itemToPay, checkoutTotalPrice: totalPriceToPay } }); }, 500);
   };
 
-  // 4. Hàm xử lý khi Người dùng gửi Đánh giá mới
+  // Tạo mới đánh giá
   const onFinishReview = async (values) => {
+    if (!currentUser) {
+      message.warning('Vui lòng đăng nhập tài khoản trước khi gửi đánh giá!');
+      return;
+    }
     setSubmitting(true);
     try {
       const response = await API.post(`/api/products/${_id}/reviews`, values);
       if (response.data.success) {
         message.success('Cảm ơn bạn đã gửi đánh giá cho sản phẩm!');
         form.resetFields();
-        // Đẩy đánh giá mới vừa tạo lên đầu danh sách hiển thị mà không cần reload trang
-        setReviews([response.data.review, ...reviews]);
+        fetchProductAndReviews(); // Gọi tải lại để đồng bộ thông tin bao gồm cả UserId vừa ghi
       }
     } catch (error) {
-      console.error('Lỗi gửi đánh giá:', error);
-      message.error('Gửi đánh giá thất bại, vui lòng thử lại!');
+      message.error('Gửi đánh giá thất bại, vui lòng đăng nhập và thử lại!');
     } finally {
       setSubmitting(false);
     }
   };
 
-  if (loading) {
-    return (
-      <div style={{ textAlign: 'center', padding: '100px 0' }}>
-        <Spin size="large" tip="Đang tải chi tiết sản phẩm..." />
-      </div>
-    );
-  }
+  // Mở modal sửa đổi đánh giá
+  const openEditReview = (review) => {
+    setEditingReviewId(review._id);
+    editForm.setFieldsValue({
+      rating: review.rating,
+      comment: review.comment,
+    });
+    setIsEditModalOpen(true);
+  };
 
-  if (!product) {
-    return (
-      <div style={{ textAlign: 'center', padding: '50px' }}>
-        <Text type="secondary">Sản phẩm không tồn tại hoặc đã bị xóa khỏi hệ thống.</Text>
-        <br /><br />
-        <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/products')}>Quay lại danh sách</Button>
-      </div>
-    );
-  }
+  // Submit cập nhật đánh giá
+  const handleUpdateReviewSubmit = async () => {
+    try {
+      const values = await editForm.validateFields();
+      const response = await API.put(`/api/customer/reviews/${editingReviewId}`, values);
+      if (response.data.success) {
+        message.success('Đã cập nhật thay đổi đánh giá!');
+        setReviews(reviews.map(r => r._id === editingReviewId ? { ...r, ...values } : r));
+        setIsEditModalOpen(false);
+      }
+    } catch (error) {
+      message.error('Không thể cập nhật đánh giá, vui lòng thử lại.');
+    }
+  };
+
+  // Khách hàng tự xóa đánh giá
+  const handleDeleteReview = async (reviewId) => {
+    try {
+      const response = await API.delete(`/api/customer/reviews/${reviewId}`);
+      if (response.data.success) {
+        message.success('Đã xóa đánh giá thành công!');
+        setReviews(reviews.filter(r => r._id !== reviewId));
+      }
+    } catch (error) {
+      message.error('Lỗi khi xóa đánh giá của bạn.');
+    }
+  };
+
+  // Gửi bình luận trao đổi qua lại (Discussion)
+  const handleSendDiscussion = async (reviewId) => {
+    const text = replyInputs[reviewId];
+    if (!text || !text.trim()) return;
+    if (!currentUser) {
+      message.warning('Vui lòng đăng nhập để tham gia trao đổi thảo luận!');
+      return;
+    }
+
+    try {
+      const response = await API.post(`/api/reviews/${reviewId}/discussion`, { comment: text });
+      if (response.data.success) {
+        message.success('Đã gửi phản hồi thảo luận công khai!');
+        // Cập nhật dữ liệu tức thì trên UI
+        setReviews(reviews.map(r => r._id === reviewId ? response.data.review : r));
+        setReplyInputs({ ...replyInputs, [reviewId]: '' }); // Clear ô nhập
+      }
+    } catch (error) {
+      message.error('Không thể gửi phản hồi thảo luận');
+    }
+  };
+
+  if (loading) return <div style={{ textAlign: 'center', padding: '100px 0' }}><Spin size="large" tip="Đang tải..." /></div>;
+  if (!product) return <div style={{ textAlign: 'center', padding: '50px' }}><Text type="secondary">Sản phẩm không tồn tại.</Text></div>;
 
   return (
-    <div style={{ maxWidth: 1100, margin: '0 auto', padding: '20px', borderRadius: 8, marginTop: 20 }}>
-      <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(-1)} style={{ marginBottom: 20 }}>
-        Quay lại
-      </Button>
+    <div style={{ maxWidth: 1100, margin: '0 auto', padding: '20px', marginTop: 20 }}>
+      <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(-1)} style={{ marginBottom: 20 }}>Quay lại</Button>
       
-      {/* ─── KHỐI THÔNG TIN CHI TIẾT SẢN PHẨM ─── */}
-      <Card borderless="true" style={{ background: '#fff', borderRadius: 8, marginBottom: 24 }} className="shadow-sm">
+      {/* KHỐI SẢN PHẨM */}
+      <Card style={{ marginBottom: 24 }} className="shadow-sm">
         <Row gutter={[40, 32]}>
-          {/* Cột trái: Ảnh sản phẩm */}
           <Col xs={24} md={12} style={{ textAlign: 'center' }}>
-            <img 
-              src={`/images/${Array.isArray(product.image) ? product.image[0] : product.image}`} 
-              alt={product.name} 
-              style={{ maxWidth: '100%', maxHeight: 400, objectFit: 'contain', borderRadius: 4 }}
-              onError={(e) => { e.target.src = 'https://via.placeholder.com/400'; }}
-            />
+            <img src={`/images/${Array.isArray(product.image) ? product.image[0] : product.image}`} alt={product.name} style={{ maxWidth: '100%', maxHeight: 350, objectFit: 'contain' }} />
           </Col>
-
-          {/* Cột phải: Thông tin chi tiết */}
           <Col xs={24} md={12}>
-            <Space size="middle" style={{ marginBottom: 10 }}>
-              <Tag color="blue" style={{ textTransform: 'uppercase' }}>{product.brand || 'Thương hiệu'}</Tag>
-              <Tag color="green">{product.category || 'Danh mục'}</Tag>
-            </Space>
-            
-            <Title level={2} style={{ margin: '0 0 15px 0' }}>{product.name}</Title>
-            
-            <div style={{ background: '#fafafa', padding: '15px 20px', borderRadius: 8, marginBottom: 20 }}>
-              <Text type="danger" style={{ fontSize: 28, fontWeight: 'bold' }}>
-                {product.price?.toLocaleString()} VNĐ
-              </Text>
+            <Space style={{ marginBottom: 10 }}><Tag color="blue">{product.brand}</Tag><Tag color="green">{product.category}</Tag></Space>
+            <Title level={2}>{product.name}</Title>
+            <div style={{ background: '#fafafa', padding: '10px 15px', borderRadius: 8, marginBottom: 20 }}>
+              <Text type="danger" style={{ fontSize: 24, fontWeight: 'bold' }}>{product.price?.toLocaleString()} VNĐ</Text>
             </div>
-            
-            <Divider style={{ margin: '15px 0' }} />
-            
-            <Paragraph>
-              <Text strong>Mô tả chi tiết sản phẩm:</Text>
-              <div style={{ marginTop: 8, color: '#595959', lineHeight: '1.6' }}>
-                {product.description || 'Chưa có thông tin mô tả cụ thể dành cho sản phẩm này.'}
-              </div>
-            </Paragraph>
-
-            <Divider style={{ margin: '15px 0' }} />
-
-            <div style={{ marginBottom: 25, display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <Text strong>Số lượng mua: </Text>
-              <InputNumber 
-                min={1} 
-                max={product.stock || 99} 
-                value={quantity} 
-                onChange={(val) => setQuantity(val || 1)} 
-                style={{ width: 80 }}
-              />
-              <Text type="secondary" style={{ fontSize: 13 }}>
-                (Còn {product.stock || 0} sản phẩm trong kho)
-              </Text>
+            <Paragraph><Text strong>Mô tả:</Text> <div>{product.description}</div></Paragraph>
+            <div style={{ marginBottom: 20 }}>
+              <Text strong>Số lượng: </Text>
+              <InputNumber min={1} max={product.stock || 1} value={quantity} onChange={(val) => setQuantity(val || 1)} style={{ width: 70 }} />
+              <Text type="secondary"> (Kho còn: {product.stock})</Text>
             </div>
-
-            <Space size="large" style={{ width: '100%' }}>
-              <Button 
-                type="default" 
-                size="large" 
-                icon={<ShoppingCartOutlined />}
-                disabled={product.stock <= 0}
-                onClick={() => handleAddToCart(true)}
-                style={{ minWidth: 160, height: 48, borderColor: '#1890ff', color: '#1890ff' }}
-              >
-                Thêm vào giỏ
-              </Button>
-              <Button 
-                type="primary" 
-                danger 
-                size="large" 
-                icon={<ThunderboltOutlined />}
-                disabled={product.stock <= 0}
-                onClick={handleBuyNow}
-                style={{ minWidth: 160, height: 48 }}
-              >
-                Mua ngay
-              </Button>
+            <Space>
+              <Button type="default" icon={<ShoppingCartOutlined />} onClick={() => handleAddToCart(true)}>Thêm vào giỏ</Button>
+              <Button type="primary" danger icon={<ThunderboltOutlined />} onClick={handleBuyNow}>Mua ngay</Button>
             </Space>
           </Col>
         </Row>
       </Card>
 
-      {/* ─── KHỐI ĐÁNH GIÁ & BÌNH LUẬN TỪ NGƯỜI DÙNG ─── */}
+      {/* KHỐI ĐÁNH GIÁ & TRAO ĐỔI QUA LẠI */}
       <Row gutter={[24, 24]}>
-        {/* Bên trái: Danh sách các đánh giá hiện có */}
         <Col xs={24} lg={14}>
-          <Card title={<Space><MessageOutlined /> <Text strong>Đánh giá từ khách hàng ({reviews.length})</Text></Space>} className="shadow-sm rounded-lg">
+          <Card title={<Space><MessageOutlined /> <Text strong>Đánh giá & Thảo luận ({reviews.length})</Text></Space>}>
             {reviews.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '30px 0' }}>
-                <Text type="secondary">Sản phẩm chưa có đánh giá nào. Hãy là người đầu tiên đánh giá!</Text>
-              </div>
+              <div style={{ textAlign: 'center', padding: '20px' }}><Text type="secondary">Chưa có đánh giá nào.</Text></div>
             ) : (
               <List
                 itemLayout="horizontal"
                 dataSource={reviews}
-                pagination={{ pageSize: 5, size: 'small' }}
                 renderItem={(item) => (
-                  <List.Item style={{ padding: '16px 0', alignItems: 'flex-start' }}>
-                    <List.Item.Meta
-                      avatar={<Avatar icon={<UserOutlined />} style={{ backgroundColor: '#87d068' }} />}
-                      title={
-                        <Space direction="vertical" size={0} style={{ width: '100%' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <Text strong>{item.name}</Text>
-                            <Text type="secondary" style={{ fontSize: 12 }}>
-                              {new Date(item.createdAt).toLocaleDateString('vi-VN')}
-                            </Text>
-                          </div>
-                          <Rate disabled defaultValue={item.rating} style={{ fontSize: 12 }} className="text-amber-400" />
-                        </Space>
-                      }
-                      description={
-                        <div style={{ marginTop: 6 }}>
-                          {/* Nội dung khách bình luận */}
-                          <p style={{ color: '#262626', margin: '0 0 8px 0' }}>{item.comment}</p>
-                          
-                          {/* Khối hiển thị câu trả lời của Admin nếu có */}
-                          {item.reply && (
-                            <div style={{ background: '#f5f5f5', padding: '10px 14px', borderRadius: 6, borderLeft: '3px solid #10b981', marginTop: 8 }}>
-                              <Text strong style={{ color: '#10b981', fontSize: 12, display: 'block', marginBottom: 2 }}>
-                                Phản hồi từ cửa hàng:
-                              </Text>
-                              <p style={{ margin: 0, color: '#434343', italic: 'true', fontSize: 13 }}>{item.reply}</p>
-                            </div>
-                          )}
+                  <List.Item style={{ padding: '20px 0', alignItems: 'flex-start', display: 'block' }}>
+                    <div style={{ display: 'flex', gap: 12 }}>
+                      <Avatar icon={<UserOutlined />} style={{ backgroundColor: '#87d068' }} />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <Space><Text strong>{item.name}</Text>{item.userId === currentUser?.id && <Tag color="orange">Đánh giá của bạn</Tag>}</Space>
+                          <Text type="secondary" style={{ fontSize: 11 }}>{new Date(item.createdAt).toLocaleDateString('vi-VN')}</Text>
                         </div>
-                      }
-                    />
+                        <Rate disabled defaultValue={item.rating} style={{ fontSize: 11, display: 'block', margin: '4px 0' }} />
+                        <p style={{ color: '#262626', margin: '6px 0', fontSize: 14 }}>{item.comment}</p>
+
+                        {/* Thanh công cụ hành động: Sửa / Xóa đánh giá dành riêng cho chủ nhân bài viết */}
+                        {item.userId === currentUser?.id && (
+                          <Space size="middle" style={{ marginTop: 4, marginBottom: 8 }}>
+                            <Button type="link" size="small" icon={<EditOutlined />} onClick={() => openEditReview(item)}>Sửa đánh giá</Button>
+                            <Popconfirm title="Xóa đánh giá này?" onConfirm={() => handleDeleteReview(item._id)} okText="Xóa" cancelText="Hủy">
+                              <Button type="link" size="small" danger icon={<DeleteOutlined />}>Xóa</Button>
+                            </Popconfirm>
+                          </Space>
+                        )}
+
+                        {/* Chuỗi Lịch sử các trao đổi thảo luận con (Discussions) */}
+                        {item.discussions && item.discussions.length > 0 && (
+                          <div style={{ background: '#f9f9f9', padding: '10px 12px', borderRadius: 6, marginTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                            {item.discussions.map((disc, idx) => (
+                              <div key={idx} style={{ borderBottom: idx !== item.discussions.length - 1 ? '1px dashed #e8e8e8' : 'none', paddingBottom: 6 }}>
+                                <Space>
+                                  <Text strong style={{ fontSize: 12 }}>{disc.name}</Text>
+                                  {disc.role === 'admin' ? <Tag color="red" style={{ fontSize: 10 }}>Quản trị viên</Tag> : <Tag color="blue" style={{ fontSize: 10 }}>Khách hàng</Tag>}
+                                  <Text type="secondary" style={{ fontSize: 10 }}>{new Date(disc.createdAt).toLocaleDateString('vi-VN')}</Text>
+                                </Space>
+                                <p style={{ margin: '2px 0 0 0', color: '#434343', fontSize: 13 }}>{disc.comment}</p>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Khung phản hồi trao đổi tức thì công khai */}
+                        <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                          <Input 
+                            placeholder={currentUser ? "Nhập câu hỏi, câu trả lời hoặc thảo luận trao đổi..." : "Vui lòng đăng nhập để phản hồi..."}
+                            disabled={!currentUser}
+                            size="small"
+                            value={replyInputs[item._id] || ''}
+                            onChange={(e) => setReplyInputs({ ...replyInputs, [item._id]: e.target.value })}
+                            onPressEnter={() => handleSendDiscussion(item._id)}
+                          />
+                          <Button disabled={!currentUser} size="small" type="primary" icon={<CommentOutlined />} onClick={() => handleSendDiscussion(item._id)}>Gửi</Button>
+                        </div>
+                      </div>
+                    </div>
                   </List.Item>
                 )}
               />
@@ -274,44 +257,41 @@ const ProductDetail = () => {
           </Card>
         </Col>
 
-        {/* Bên phải: Form viết câu đánh giá mới */}
+        {/* BÊN PHẢI: FORM GỬI REVIEW MỚI */}
         <Col xs={24} lg={10}>
-          <Card title={<Text strong>Viết đánh giá của bạn</Text>} className="shadow-sm rounded-lg">
-            <Form form={form} layout="vertical" onFinish={onFinishReview}>
-              <Form.Item
-                name="name"
-                label="Họ và tên của bạn"
-                rules={[{ required: true, message: 'Vui lòng nhập họ tên để gửi đánh giá!' }]}
-              >
-                <Input placeholder="Ví dụ: Nguyễn Văn A..." />
-              </Form.Item>
-
-              <Form.Item
-                name="rating"
-                label="Chọn số sao đánh giá"
-                rules={[{ required: true, message: 'Vui lòng chọn số sao!' }]}
-                initialValue={5}
-              >
-                <Rate className="text-amber-400" />
-              </Form.Item>
-
-              <Form.Item
-                name="comment"
-                label="Cảm nhận về sản phẩm"
-                rules={[{ required: true, message: 'Vui lòng viết nội dung bình luận!' }]}
-              >
-                <TextArea rows={4} placeholder="Sản phẩm dùng rất tốt, đóng gói cẩn thận, giao hàng nhanh..." />
-              </Form.Item>
-
-              <Form.Item style={{ marginBottom: 0 }}>
-                <Button type="primary" htmlType="submit" loading={submitting} block style={{ height: 40 }}>
-                  Gửi đánh giá sản phẩm
-                </Button>
-              </Form.Item>
-            </Form>
+          <Card title={<Text strong>Viết đánh giá của bạn</Text>}>
+            {currentUser ? (
+              <Form form={form} layout="vertical" onFinish={onFinishReview}>
+                <Form.Item name="rating" label="Số sao đánh giá" rules={[{ required: true }]} initialValue={5}>
+                  <Rate className="text-amber-400" />
+                </Form.Item>
+                <Form.Item name="comment" label="Cảm nhận sản phẩm" rules={[{ required: true, message: 'Nhập nội dung bình luận!' }]}>
+                  <TextArea rows={4} placeholder="Sản phẩm dùng tốt, đóng gói cẩn thận..." />
+                </Form.Item>
+                <Button type="primary" htmlType="submit" loading={submitting} block>Gửi đánh giá sản phẩm</Button>
+              </Form>
+            ) : (
+              <div style={{ textAlign: 'center', padding: '20px 0' }}>
+                <Text type="secondary">Bạn cần đăng nhập để viết đánh giá cho sản phẩm.</Text>
+                <br /><br />
+                <Button type="primary" onClick={() => navigate('/login')}>Đi tới đăng nhập</Button>
+              </div>
+            )}
           </Card>
         </Col>
       </Row>
+
+      {/* COMPONENT MODAL: PHỤC VỤ SỬA REVIEW */}
+      <Modal title="Chỉnh sửa đánh giá của bạn" open={isEditModalOpen} onOk={handleUpdateReviewSubmit} onCancel={() => setIsEditModalOpen(false)} okText="Lưu thay đổi" cancelText="Hủy">
+        <Form form={editForm} layout="vertical">
+          <Form.Item name="rating" label="Thay đổi số sao đánh giá" rules={[{ required: true }]}>
+            <Rate />
+          </Form.Item>
+          <Form.Item name="comment" label="Nội dung đánh giá mới" rules={[{ required: true, message: 'Nội dung không được trống!' }]}>
+            <TextArea rows={4} />
+          </Form.Item>
+        </Form>
+      </Modal>
     </div>
   );
 };

@@ -62,13 +62,23 @@ const productSchema = new mongoose.Schema({
 });
 const Product = mongoose.model('Product', productSchema);
 
-// Schema Đánh giá & Phản hồi
+// Schema Đánh giá nâng cấp với chuỗi thảo luận
 const reviewSchema = new mongoose.Schema({
   productId: { type: mongoose.Schema.Types.ObjectId, ref: 'Product', required: true },
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true }, // Liên kết tài khoản khách hàng
   name: { type: String, required: true }, 
   rating: { type: Number, required: true, min: 1, max: 5 }, 
   comment: { type: String, required: true }, 
-  reply: { type: String, default: "" }, 
+  // Mảng lưu lịch sử trao đổi qua lại giữa khách và các quản trị viên/khách khác
+  discussions: [
+    {
+      userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+      name: { type: String, required: true },
+      role: { type: String, required: true }, // 'customer' hoặc 'admin'
+      comment: { type: String, required: true },
+      createdAt: { type: Date, default: Date.now }
+    }
+  ],
   createdAt: { type: Date, default: Date.now }
 });
 const Review = mongoose.model('Review', reviewSchema);
@@ -336,17 +346,91 @@ app.delete('/api/products/:id', authMiddleware, adminMiddleware, async (req, res
 //             6. API REVIEWS
 // ==========================================
 
-// Gửi đánh giá (Public)
-app.post('/api/products/:productId/reviews', async (req, res) => {
+// Gửi đánh giá mới (Yêu cầu đăng nhập)
+app.post('/api/products/:productId/reviews', authMiddleware, async (req, res) => {
   try {
-    const { name, rating, comment } = req.body;
+    const { rating, comment } = req.body;
+    const userId = req.user.id;
+
+    // Lấy thông tin người dùng từ DB để điền tên tự động công khai
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ success: false, message: "Không tìm thấy người dùng" });
+
     const newReview = new Review({
-      productId: new mongoose.Types.ObjectId(req.params.productId), name, rating: Number(rating), comment
+      productId: new mongoose.Types.ObjectId(req.params.productId),
+      userId: userId,
+      name: user.name,
+      rating: Number(rating),
+      comment
     });
+
     await newReview.save();
     res.status(201).json({ success: true, review: newReview });
   } catch (error) {
     res.status(500).json({ success: false, message: "Không thể gửi đánh giá" });
+  }
+});
+
+// KHÁCH HÀNG: Sửa đánh giá của chính mình
+app.put('/api/customer/reviews/:id', authMiddleware, async (req, res) => {
+  try {
+    const { rating, comment } = req.body;
+    const review = await Review.findOne({ _id: req.params.id, userId: req.user.id });
+
+    if (!review) {
+      return res.status(403).json({ success: false, message: "Bạn không có quyền sửa hoặc đánh giá không tồn tại!" });
+    }
+
+    review.rating = Number(rating);
+    review.comment = comment;
+    await review.save();
+
+    res.json({ success: true, message: "Cập nhật đánh giá thành công!", review });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Lỗi hệ thống khi sửa đánh giá" });
+  }
+});
+
+// KHÁCH HÀNG: Xóa đánh giá của chính mình
+app.delete('/api/customer/reviews/:id', authMiddleware, async (req, res) => {
+  try {
+    const review = await Review.findOneAndDelete({ _id: req.params.id, userId: req.user.id });
+
+    if (!review) {
+      return res.status(403).json({ success: false, message: "Bạn không có quyền xóa hoặc đánh giá không tồn tại!" });
+    }
+
+    res.json({ success: true, message: "Xóa đánh giá thành công!" });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Lỗi hệ thống khi xóa đánh giá" });
+  }
+});
+
+// [PUBLIC] Phản hồi/Trao đổi vào chuỗi thảo luận (Dành cho cả Admin lẫn Customer tương tác qua lại)
+app.post('/api/reviews/:id/discussion', authMiddleware, async (req, res) => {
+  try {
+    const { comment } = req.body;
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ success: false, message: "Tài khoản không tồn tại" });
+
+    const review = await Review.findById(req.params.id);
+    if (!review) return res.status(404).json({ success: false, message: "Đánh giá gốc không tồn tại" });
+
+    // Đẩy phản hồi mới vào mảng thảo luận qua lại
+    const discussionItem = {
+      userId: user._id,
+      name: user.name,
+      role: user.role, // 'admin' hoặc 'customer'
+      comment,
+      createdAt: new Date()
+    };
+
+    review.discussions.push(discussionItem);
+    await review.save();
+
+    res.json({ success: true, message: "Đã gửi phản hồi trao đổi!", review });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Lỗi hệ thống khi gửi thảo luận" });
   }
 });
 
