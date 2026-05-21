@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Col, Row, Statistic, Spin, message, Typography } from 'antd';
+import { Col, Row, Statistic, Spin, message, Typography, Table, Card } from 'antd';
 import { 
   DatabaseOutlined, 
   ShoppingOutlined, 
   DollarCircleOutlined, 
-  ClockCircleOutlined
+  ClockCircleOutlined,
+  UserOutlined,
+  FireOutlined
 } from '@ant-design/icons';
 import API from '../utils/axiosClient';
 
@@ -19,7 +21,9 @@ const AdminDashboard = () => {
     totalProducts: 0,
     totalOrders: 0,
     totalRevenue: 0,
-    pendingOrders: 0
+    pendingOrders: 0,
+    topCustomers: [], // Khởi tạo mảng lưu top khách hàng
+    topProducts: []   // Khởi tạo mảng lưu top sản phẩm bán chạy
   });
 
   const fetchStats = async () => {
@@ -47,6 +51,71 @@ const AdminDashboard = () => {
     );
   }
 
+  // Định nghĩa các cột cho bảng Top Khách Hàng
+  const customerColumns = [
+    {
+      title: 'Hạng',
+      key: 'rank',
+      width: 60,
+      render: (text, record, index) => <strong>#{index + 1}</strong>,
+    },
+    {
+      title: 'Khách hàng',
+      dataIndex: 'name',
+      key: 'name',
+      render: (text, record) => (
+        <div>
+          <div style={{ fontWeight: 600, color: '#1e293b' }}>{text}</div>
+          <div style={{ fontSize: '12px', color: '#64748b' }}>{record.phone}</div>
+        </div>
+      )
+    },
+    {
+      title: 'Số đơn',
+      dataIndex: 'orderCount',
+      key: 'orderCount',
+      align: 'center',
+      render: (text) => `${text} đơn`
+    },
+    {
+      title: 'Tổng chi tiêu',
+      dataIndex: 'totalSpent',
+      key: 'totalSpent',
+      align: 'right',
+      render: (value) => <span style={{ color: '#10b981', fontWeight: 600 }}>{value.toLocaleString('vi-VN')} đ</span>
+    }
+  ];
+
+  // Định nghĩa các cột cho bảng Top Sản Phẩm Bán Chạy
+  const productColumns = [
+    {
+      title: 'Hạng',
+      key: 'rank',
+      width: 60,
+      render: (text, record, index) => <strong>#{index + 1}</strong>,
+    },
+    {
+      title: 'Tên sản phẩm',
+      dataIndex: 'name',
+      key: 'name',
+      render: (text) => <span style={{ fontWeight: 500, color: '#1e293b' }}>{text}</span>
+    },
+    {
+      title: 'Đã bán',
+      dataIndex: 'totalQty',
+      key: 'totalQty',
+      align: 'center',
+      render: (text) => <strong style={{ color: '#ef4444' }}>{text}</strong>
+    },
+    {
+      title: 'Doanh thu thu về',
+      dataIndex: 'totalRevenue',
+      key: 'totalRevenue',
+      align: 'right',
+      render: (value) => <span>{value.toLocaleString('vi-VN')} đ</span>
+    }
+  ];
+
   return (
     <div style={{ padding: '24px', backgroundColor: '#f8fafc', minHeight: '100vh', fontFamily: 'sans-serif' }}>
       
@@ -69,13 +138,13 @@ const AdminDashboard = () => {
             padding: '20px',
             backgroundColor: '#ffffff',
             border: '1px solid #e2e8f0',
-            borderLeft: '5px solid #10b981', // Màu xanh emerald chủ đạo
+            borderLeft: '5px solid #10b981', 
             borderRadius: '8px',
             boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.05)',
             background: 'linear-gradient(to right, #f0fdf4 0%, #ffffff 100%)'
           }}>
             <Statistic
-              title={<span style={{ fontWeight: '600', color: '#64748b', fontSize: '12px', trackingWidth: '0.05em' }}>TỔNG DOANH THU THỰC TẾ</span>}
+              title={<span style={{ fontWeight: '600', color: '#64748b', fontSize: '12px' }}>TỔNG DOANH THU THỰC TẾ</span>}
               value={stats.totalRevenue}
               valueStyle={{ color: '#10b981', fontWeight: '700', fontSize: '22px' }}
               prefix={<DollarCircleOutlined style={{ marginRight: '4px' }} />}
@@ -90,7 +159,7 @@ const AdminDashboard = () => {
             padding: '20px',
             backgroundColor: '#ffffff',
             border: '1px solid #e2e8f0',
-            borderLeft: '5px solid #3b82f6', // Màu xanh dương
+            borderLeft: '5px solid #3b82f6', 
             borderRadius: '8px',
             boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.05)',
             background: 'linear-gradient(to right, #eff6ff 0%, #ffffff 100%)'
@@ -111,7 +180,7 @@ const AdminDashboard = () => {
             padding: '20px',
             backgroundColor: '#ffffff',
             border: '1px solid #e2e8f0',
-            borderLeft: '5px solid #f59e0b', // Màu vàng hổ phách
+            borderLeft: '5px solid #f59e0b', 
             borderRadius: '8px',
             boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.05)',
             background: 'linear-gradient(to right, #fffbeb 0%, #ffffff 100%)'
@@ -132,7 +201,7 @@ const AdminDashboard = () => {
             padding: '20px',
             backgroundColor: '#ffffff',
             border: '1px solid #e2e8f0',
-            borderLeft: '5px solid #8b5cf6', // Màu tím
+            borderLeft: '5px solid #8b5cf6', 
             borderRadius: '8px',
             boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.05)',
             background: 'linear-gradient(to right, #faf5ff 0%, #ffffff 100%)'
@@ -145,6 +214,55 @@ const AdminDashboard = () => {
               suffix="mã"
             />
           </div>
+        </Col>
+
+      </Row>
+
+      {/* BỔ SUNG: Phần hiển thị bảng biểu chi tiết phân tích sâu */}
+      <Row gutter={[16, 16]} style={{ marginTop: '32px' }}>
+        
+        {/* Cột trái: Top 5 khách hàng chi tiêu nhiều nhất */}
+        <Col xs={24} lg={12}>
+          <Card 
+            title={
+              <span style={{ color: '#1e293b', fontWeight: 600 }}>
+                <UserOutlined style={{ marginRight: '8px', color: '#3b82f6' }} /> Top 5 Khách Hàng Thân Thiết (Mua Nhiều Nhất)
+              </span>
+            }
+            bordered={false}
+            style={{ boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.05)', borderRadius: '8px' }}
+          >
+            <Table
+              dataSource={stats.topCustomers}
+              columns={customerColumns}
+              rowKey={(record) => `${record.name}-${record.phone}`}
+              pagination={false}
+              size="middle"
+              locale={{ emptyText: 'Chưa có dữ liệu mua hàng hợp lệ' }}
+            />
+          </Card>
+        </Col>
+
+        {/* Cột phải: Top 5 sản phẩm bán chạy nhất */}
+        <Col xs={24} lg={12}>
+          <Card 
+            title={
+              <span style={{ color: '#1e293b', fontWeight: 600 }}>
+                <FireOutlined style={{ marginRight: '8px', color: '#ef4444' }} /> Top 5 Sản Phẩm Bán Chạy Nhất
+              </span>
+            }
+            bordered={false}
+            style={{ boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.05)', borderRadius: '8px' }}
+          >
+            <Table
+              dataSource={stats.topProducts}
+              columns={productColumns}
+              rowKey={(record) => record.name}
+              pagination={false}
+              size="middle"
+              locale={{ emptyText: 'Chưa có sản phẩm nào được bán thành công' }}
+            />
+          </Card>
         </Col>
 
       </Row>

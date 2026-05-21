@@ -895,43 +895,126 @@ app.get('/api/admin/orders/export-excel', authMiddleware, adminMiddleware, async
   }
 });
 
-// [ADMIN] Số liệu Dashboard Thống kê
+// [ADMIN] Số liệu Dashboard Thống kê nâng cấp (Bao gồm cả Top Khách hàng & Top Sản phẩm)
 app.get('/api/admin/dashboard-stats', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const totalProducts = await Product.countDocuments();
     const totalOrders = await Order.countDocuments();
-    const paidOrders = await Order.find({ paymentStatus: 'PAID' });
-    const totalRevenue = paidOrders.reduce((sum, o) => sum + (o.totalPrice || 0), 0);
-    const pendingOrders = await Order.countDocuments({ paymentStatus: 'PENDING' });
+    
+    // Đơn hàng hợp lệ tạo ra doanh thu thực tế (Đã trả tiền hoặc COD đã giao thành công)
+    const validOrders = await Order.find({
+      $or: [
+        { paymentStatus: 'Đã thanh toán' },
+        { status: 'Đã nhận' }
+      ]
+    });
 
-    res.json({ totalProducts, totalOrders, totalRevenue, pendingOrders });
+    // 1. Tính tổng doanh thu
+    const totalRevenue = validOrders.reduce((sum, o) => sum + (o.totalPrice || 0), 0);
+    
+    // 2. Đếm số đơn chờ xử lý (Chờ thanh toán/Xác nhận và chưa bị hủy)
+    const pendingOrders = await Order.countDocuments({ 
+      paymentStatus: 'Chờ thanh toán',
+      status: { $ne: 'Hủy đơn hàng' }
+    });
+
+    // 3. Phân tích Top 5 người mua nhiều nhất (Dựa trên tổng số tiền họ đã chi trả)
+    const customerMap = {};
+    validOrders.forEach(order => {
+      // Nhóm theo tên + sđt để tránh trùng lặp nếu khách mua không đăng nhập hoặc đổi tài khoản
+      const key = `${order.customerName} (${order.phoneNumber})`; 
+      if (!customerMap[key]) {
+        customerMap[key] = { name: order.customerName, phone: order.phoneNumber, totalSpent: 0, orderCount: 0 };
+      }
+      customerMap[key].totalSpent += order.totalPrice || 0;
+      customerMap[key].orderCount += 1;
+    });
+
+    const topCustomers = Object.values(customerMap)
+      .sort((a, b) => b.totalSpent - a.totalSpent)
+      .slice(0, 5);
+
+    // 4. Phân tích Top 5 sản phẩm bán chạy nhất (Dựa trên tổng số lượng quantity đã bán)
+    const productMap = {};
+    validOrders.forEach(order => {
+      order.items.forEach(item => {
+        const pId = item.productId.toString();
+        if (!productMap[pId]) {
+          productMap[pId] = { name: item.name, totalQty: 0, totalRevenue: 0 };
+        }
+        productMap[pId].totalQty += item.quantity || 0;
+        productMap[pId].totalRevenue += (item.price * item.quantity) || 0;
+      });
+    });
+
+    const topProducts = Object.values(productMap)
+      .sort((a, b) => b.totalQty - a.totalQty)
+      .slice(0, 5);
+
+    // Trả về toàn bộ dữ liệu thống kê tích hợp cho frontend
+    res.json({ 
+      totalProducts, 
+      totalOrders, 
+      totalRevenue, 
+      pendingOrders,
+      topCustomers,
+      topProducts
+    });
   } catch (error) {
     res.status(500).json({ message: 'Không thể tải số liệu thống kê Dashboard' });
   }
 });
-
-// [ADMIN] Dữ liệu biểu đồ doanh thu theo tháng
+// [ADMIN] Dữ liệu biểu đồ doanh thu theo tháng (Đã đồng bộ đơn Đã Nhận & Ship COD)
 app.get('/api/admin/reports-chart', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const startOfYear = new Date(new Date().getFullYear(), 0, 1);
-    const paidOrders = await Order.find({ paymentStatus: 'PAID', createdAt: { $gte: startOfYear } });
-    const months = Array.from({ length: 12 }, (_, i) => ({ name: `Tháng ${i + 1}`, DoanhThu: 0, DonHang: 0 }));
+    
+    // 🌟 SỬA ĐIỀU KIỆN: Bắt cả đơn chuyển khoản thành công HOẶC đơn COD đã giao (Đã nhận)
+    const paidOrders = await Order.find({ 
+      createdAt: { $gte: startOfYear },
+      $or: [
+        { paymentStatus: 'Đã thanh toán' },
+        { status: 'Đã nhận' }
+      ]
+    });
+
+    // Tính tổng doanh thu tích lũy để trả về cho Frontend làm Summary Card
+    const totalRevenue = paidOrders.reduce((sum, o) => sum + (o.totalPrice || 0), 0);
+    const totalOrdersCount = paidOrders.length;
+
+    const months = Array.from({ length: 12 }, (_, i) => ({ 
+      name: `Tháng ${i + 1}`, 
+      DoanhThu: 0, 
+      DonHang: 0 
+    }));
 
     paidOrders.forEach(o => {
       const m = new Date(o.createdAt).getMonth();
       months[m].DoanhThu += o.totalPrice || 0;
       months[m].DonHang += 1;
     });
-    res.json(months);
+
+    // Trả về cả mảng tháng và các biến tổng hợp
+    res.json({
+      months,
+      totalRevenue,
+      totalOrdersCount
+    });
   } catch (error) {
     res.status(500).json({ message: 'Không thể tải dữ liệu báo cáo' });
   }
 });
-
-// [ADMIN] Xuất báo cáo doanh thu Excel riêng biệt
+// [ADMIN] Xuất báo cáo doanh thu Excel (Đã đồng bộ đơn Đã Nhận & Ship COD)
 app.get('/api/admin/export-reports', authMiddleware, adminMiddleware, async (req, res) => {
   try {
-    const orders = await Order.find({ paymentStatus: 'PAID' }).sort({ createdAt: -1 });
+    // 🌟 SỬA ĐIỀU KIỆN: Xuất đầy đủ các đơn tạo ra dòng tiền thực tế
+    const orders = await Order.find({
+      $or: [
+        { paymentStatus: 'Đã thanh toán' },
+        { status: 'Đã nhận' }
+      ]
+    }).sort({ createdAt: -1 });
+
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Báo cáo Doanh thu TechShop');
 
@@ -941,15 +1024,22 @@ app.get('/api/admin/export-reports', authMiddleware, adminMiddleware, async (req
       { header: 'Số Điện Thoại', key: 'phoneNumber', width: 15 },
       { header: 'Phương Thức', key: 'paymentMethod', width: 15 },
       { header: 'Tổng Tiền (VNĐ)', key: 'totalPrice', width: 20 },
+      { header: 'Trạng Thái Đơn', key: 'status', width: 15 },
+      { header: 'Thanh Toán', key: 'paymentStatus', width: 18 },
       { header: 'Ngày Tạo', key: 'createdAt', width: 20 },
     ];
     worksheet.getRow(1).font = { bold: true };
 
     orders.forEach(order => {
       worksheet.addRow({
-        orderId: order.orderId, customerName: order.customerName, phoneNumber: order.phoneNumber,
+        orderId: order.orderId, 
+        customerName: order.customerName, 
+        phoneNumber: order.phoneNumber,
         paymentMethod: order.paymentMethod === 'BANK_TRANSFER' ? 'Chuyển khoản' : 'COD',
-        totalPrice: order.totalPrice, createdAt: new Date(order.createdAt).toLocaleString('vi-VN')
+        totalPrice: order.totalPrice, 
+        status: order.status,
+        paymentStatus: order.paymentStatus,
+        createdAt: new Date(order.createdAt).toLocaleString('vi-VN')
       });
     });
 
