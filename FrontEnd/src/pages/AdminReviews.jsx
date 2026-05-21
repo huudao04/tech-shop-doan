@@ -250,7 +250,8 @@ const handleReplySubmit = async () => {
         <Button 
           type="primary" 
           icon={<PlusOutlined />} 
-          className="bg-emerald-500 hover:bg-emerald-600 border-none rounded-md"
+          className="bg-emerald-500 hover:bg-emerald-600 border-none rounded-md "
+          style={{ marginLeft: '10px' }}
           onClick={() => openReviewModal(null)}
         >
           Thêm Đánh Giá
