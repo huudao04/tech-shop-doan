@@ -1,8 +1,10 @@
-import { Layout, Menu, Input, Badge, Button, Dropdown, Avatar } from 'antd';
-import { ShoppingCartOutlined, ShoppingOutlined, UserOutlined, SettingOutlined, LogoutOutlined, ProfileOutlined, CommentOutlined } from '@ant-design/icons';
+import { useState, useEffect } from 'react'; // Thêm useEffect
+import { Layout, Menu, Input, Badge, Dropdown, Avatar, notification } from 'antd';
+import { ProfileOutlined, ShoppingOutlined, SettingOutlined, LogoutOutlined, ShoppingCartOutlined, UserOutlined } from '@ant-design/icons';
 import { Outlet, Link, useNavigate } from 'react-router-dom';
 import ChatAI from '../components/ChatBotAI.jsx';
 import { useCart } from '../context/CartContex.jsx';
+import { io } from 'socket.io-client';
 
 const { Header, Content, Footer } = Layout;
 
@@ -13,6 +15,33 @@ const UserLayout = () => {
   // Đọc thông tin người dùng từ localStorage
   const token = localStorage.getItem('token');
   const user = JSON.parse(localStorage.getItem('user') || '{}');
+  
+  useEffect(() => {
+    if (!user.id) return;
+
+    const socket = io('http://localhost:5000');
+
+    // Khách hàng gia nhập phòng theo Role và ID cá nhân để nhận thông báo đích danh
+    socket.emit('join_room', { role: 'customer', userId: user.id });
+
+    socket.on('new_notification', (data) => {
+      // 🔔 Phát tiếng chuông thông báo công khai
+      const audio = new Audio('/notification-sound.mp3');
+      audio.play().catch(e => console.log("Chờ tương tác người dùng để kích hoạt audio:", e));
+
+      // Hiển thị Pop-up thông báo bằng Ant Design
+      notification.success({
+        message: data.title,
+        description: data.message,
+        placement: 'topRight', // Để góc dưới bên trái tránh đè lên chatbot AI của bạn
+        duration: 10,
+      });
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, [user.id]);
 
   const handleLogout = () => {
     localStorage.clear();

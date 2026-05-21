@@ -1,13 +1,41 @@
-import React, { useState } from 'react';
-import { Layout, Menu, Button } from 'antd';
+import React, { useState, useEffect } from 'react'; 
+import { Layout, Menu, notification } from 'antd'; 
 import { DashboardOutlined, ShoppingOutlined, OrderedListOutlined, PieChartOutlined, CommentOutlined, LogoutOutlined, HomeOutlined, UserOutlined } from '@ant-design/icons';
 import { Outlet, Link } from 'react-router-dom';
-
+import { io } from 'socket.io-client'; 
 const { Sider, Content } = Layout;
 
 const AdminLayout = () => {
   const [collapsed, setCollapsed] = useState(false);
   const user = JSON.parse(localStorage.getItem('user') || '{}');
+
+  useEffect(() => {
+    if (!user.id) return;
+
+    const socket = io('http://localhost:5000'); // Port backend của bạn
+
+    // Đăng ký vào phòng của Admin
+    socket.emit('join_room', { role: 'admin', userId: user.id });
+
+    // Lắng nghe sự kiện thông báo mới
+    socket.on('new_notification', (data) => {
+      // 🔔 Phát tiếng chuông thông báo công khai
+      const audio = new Audio('/notification-sound.mp3');
+      audio.play().catch(e => console.log("Chờ tương tác người dùng để phát nhạc:", e));
+
+      // Hộp thông báo của Ant Design bay ra ở góc màn hình
+      notification.info({
+        message: data.title,
+        description: data.message,
+        placement: 'topRight',
+        duration: 10,
+      });
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, [user.id]);
 
   const handleLogout = () => {
     localStorage.clear();

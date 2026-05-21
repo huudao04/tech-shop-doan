@@ -10,6 +10,8 @@ import ExcelJS from 'exceljs';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import nodemailer from 'nodemailer';
+import { createServer } from 'http';
+import { Server } from 'socket.io';
 import { SePayPgClient } from 'sepay-pg-node';
 
 const JWT_SECRET = 'TECH_SHOP_SUPER_SECRET_KEY_2026';
@@ -34,6 +36,29 @@ const transporter = nodemailer.createTransport({
     user: 'YOUR_EMAIL@gmail.com', // Thay bằng Gmail của shop
     pass: 'YOUR_APP_PASSWORD'     // Thay bằng Mật khẩu ứng dụng 16 ký tự của Gmail
   }
+});
+// TẠO SERVER HTTP GẮN SOCKET.IO
+const httpServer = createServer(app);
+const io = new Server(httpServer, {
+  cors: {
+    origin: "http://localhost:5173",
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE"]
+  }
+});
+// QUẢN LÝ KẾT NỐI REAL-TIME
+io.on('connection', (socket) => {
+  console.log(`🔌 Thiết bị kết nối: ${socket.id}`);
+
+  // Khi user/admin đăng nhập, họ sẽ tham gia vào phòng (Room) tương ứng với Role hoặc UserId của họ
+  socket.on('join_room', (data) => {
+    socket.join(data.role); // Gửi vào room 'admin' hoặc 'customer'
+    socket.join(data.userId); // Hoặc room riêng theo ID của từng user
+    console.log(`👤 Người dùng ${data.userId} với quyền [${data.role}] đã vào phòng.`);
+  });
+
+  socket.on('disconnect', () => {
+    console.log('❌ Thiết bị ngắt kết nối');
+  });
 });
 // ==========================================
 //             1. KẾT NỐI MONGODB
@@ -557,7 +582,19 @@ app.post('/api/reviews/:id/discussion', authMiddleware, async (req, res) => {
 
     review.discussions.push(discussionItem);
     await review.save();
-
+    if (user.role === 'admin') {
+    io.to(review.userId.toString()).emit('new_notification', {
+      title: 'Phản hồi mới từ Admin 💬',
+      message: `Quản trị viên đã trả lời đánh giá của bạn tại sản phẩm.`,
+      type: 'discussion'
+    });
+  } else {
+    io.to('admin').emit('new_notification', {
+      title: 'Thảo luận mới từ Khách 💬',
+      message: `Khách hàng ${user.name} vừa phản hồi trong chuỗi thảo luận đánh giá.`,
+      type: 'discussion'
+    });
+  }
     res.json({ success: true, message: "Đã gửi phản hồi trao đổi!", review });
   } catch (error) {
     res.status(500).json({ success: false, message: "Lỗi hệ thống khi gửi thảo luận" });
@@ -669,6 +706,11 @@ app.post('/api/orders',authMiddleware, async (req, res) => {
     }
 
     await newOrder.save();
+     io.to('admin').emit('new_notification', {
+    title: 'Đơn hàng mới! 🛒',
+    message: `Khách hàng ${customerName} vừa đặt đơn hàng ${orderId}.`,
+    type: 'order'
+  });
     return res.status(201).json({ success: true, order: newOrder, paymentGateway });
   } catch (error) {
     return res.status(500).json({ success: false, message: "Lỗi hệ thống khi xử lý đơn hàng!" });
@@ -717,7 +759,11 @@ app.patch('/api/customer/orders/:id/cancel', authMiddleware, async (req, res) =>
     order.status = 'Hủy đơn hàng';
     if (order.paymentStatus === 'PENDING') order.paymentStatus = 'FAILED';
     await order.save();
-
+    io.to('admin').emit('new_notification', {
+      title: 'Đơn hàng bị hủy ⚠️',
+      message: `Đơn hàng ${order.orderId} đã bị khách hàng hủy.`,
+      type: 'order_cancel'
+    });
     res.json({ success: true, message: "Bạn đã hủy đơn hàng thành công!", order });
   } catch (error) {
     res.status(500).json({ success: false, message: "Lỗi hệ thống khi khách hàng hủy đơn" });
@@ -769,8 +815,13 @@ app.put('/api/admin/orders/:id', authMiddleware, adminMiddleware, async (req, re
       order.status = status;
       if (paymentStatus) order.paymentStatus = paymentStatus;
     }
-
     await order.save();
+    // Gửi đích danh tới room của UserId chủ đơn hàng đó
+    io.to(order.userId.toString()).emit('new_notification', {
+      title: 'Cập nhật đơn hàng 📦',
+      message: `Đơn hàng ${order.orderId} của bạn đã chuyển sang trạng thái: ${status}.`,
+      type: 'order_status'
+    });
     res.json({ success: true, message: "Cập nhật trạng thái đơn thành công!", order });
   } catch (error) {
     res.status(500).json({ success: false, message: "Không thể cập nhật đơn hàng" });
@@ -1010,6 +1061,6 @@ cron.schedule('*/5 * * * *', async () => {
 });
 
 // Khởi chạy máy chủ
-app.listen(PORT, () => {
+httpServer.listen(PORT, () => {
   console.log(`🚀 Server TechShop Backend đang chạy mượt mà tại: http://localhost:${PORT}`);
 });
