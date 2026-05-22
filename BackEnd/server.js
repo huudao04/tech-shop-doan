@@ -95,6 +95,20 @@ const productSchema = new mongoose.Schema({
 });
 const Product = mongoose.model('Product', productSchema);
 
+// Schema Danh mục
+const categorySchema = new mongoose.Schema({
+  name: { type: String, required: true },
+  slug: { type: String }
+});
+const Category = mongoose.model('Category', categorySchema);
+
+// Schema Thương hiệu
+const brandSchema = new mongoose.Schema({
+  name: { type: String, required: true },
+  slug: { type: String }
+});
+const Brand = mongoose.model('Brand', brandSchema);
+
 // Schema Đánh giá nâng cấp với chuỗi thảo luận
 const reviewSchema = new mongoose.Schema({
   productId: { type: mongoose.Schema.Types.ObjectId, ref: 'Product', required: true },
@@ -145,6 +159,17 @@ const orderSchema = new mongoose.Schema({
 });
 const Order = mongoose.model('Order', orderSchema);
 
+// Schema Thông báo (Notification)
+const notificationSchema = new mongoose.Schema({
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: false },
+  title: { type: String, required: true },
+  message: { type: String, required: true },
+  type: { type: String, default: 'general' },
+  isRead: { type: Boolean, default: false },
+  meta: { type: mongoose.Schema.Types.Mixed, default: {} },
+  createdAt: { type: Date, default: Date.now }
+});
+const Notification = mongoose.model('Notification', notificationSchema);
 // ==========================================
 //             3. CẤU HÌNH MIDDLEWARES
 // ==========================================
@@ -187,6 +212,16 @@ const storage = multer.diskStorage({
   }
 });
 const upload = multer({ storage: storage });
+
+// [ADMIN] Upload ảnh sản phẩm cho màn quản lý sản phẩm
+app.post('/api/upload', authMiddleware, adminMiddleware, upload.array('imageFiles', 8), async (req, res) => {
+  try {
+    const fileNames = (req.files || []).map(file => file.filename);
+    res.json({ success: true, fileNames });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Không thể upload ảnh sản phẩm' });
+  }
+});
 
 // [USER & ADMIN] API Đổi mật khẩu
 app.put('/api/auth/change-password', authMiddleware, async (req, res) => {
@@ -426,8 +461,8 @@ app.get('/api/products', async (req, res) => {
 // Lấy danh mục động (Public)
 app.get('/api/categories', async (req, res) => {
   try {
-    const categories = await Product.distinct('category');
-    res.json(categories.filter(Boolean).sort().map(name => ({ name })));
+    const categories = await Category.find({}, 'name slug').sort({ name: 1 }).lean();
+    res.json(categories);
   } catch (error) {
     res.status(500).json({ message: 'Không thể tải danh mục' });
   }
@@ -436,8 +471,8 @@ app.get('/api/categories', async (req, res) => {
 // Lấy thương hiệu động (Public)
 app.get('/api/brands', async (req, res) => {
   try {
-    const brands = await Product.distinct('brand');
-    res.json(brands.filter(Boolean).sort().map(name => ({ name })));
+    const brands = await Brand.find({}, 'name slug').sort({ name: 1 }).lean();
+    res.json(brands);
   } catch (error) {
     res.status(500).json({ message: 'Không thể tải thương hiệu' });
   }
@@ -458,8 +493,12 @@ app.get('/api/products/:id', async (req, res) => {
 // [ADMIN] Thêm sản phẩm
 app.post('/api/products', authMiddleware, adminMiddleware, upload.array('image', 5), async (req, res) => {
   try {
-    const { name, price, description, category, brand, stock } = req.body;
-    let fileNames = req.files ? req.files.map(file => file.filename) : [];
+    const { name, price, description, category, brand, stock, image } = req.body;
+    const fileNames = Array.isArray(image)
+      ? image
+      : image
+        ? [image]
+        : (req.files ? req.files.map(file => file.filename) : []);
 
     const newProduct = new Product({
       name, price: Number(price), description, category, brand, stock: Number(stock), image: fileNames
@@ -474,9 +513,15 @@ app.post('/api/products', authMiddleware, adminMiddleware, upload.array('image',
 // [ADMIN] Sửa sản phẩm
 app.put('/api/products/:id', authMiddleware, adminMiddleware, upload.array('image', 5), async (req, res) => {
   try {
-    const { name, price, description, category, brand, stock } = req.body;
+    const { name, price, description, category, brand, stock, image } = req.body;
     let updateData = { name, price: Number(price), description, category, brand, stock: Number(stock) };
-    if (req.files && req.files.length > 0) updateData.image = req.files.map(file => file.filename);
+    if (Array.isArray(image)) {
+      updateData.image = image;
+    } else if (image) {
+      updateData.image = [image];
+    } else if (req.files && req.files.length > 0) {
+      updateData.image = req.files.map(file => file.filename);
+    }
 
     const updatedProduct = await Product.findByIdAndUpdate(req.params.id, updateData, { new: true });
     if (!updatedProduct) return res.status(404).json({ success: false, message: "Không tìm thấy sản phẩm" });
@@ -491,6 +536,18 @@ app.delete('/api/products/:id', authMiddleware, adminMiddleware, async (req, res
   try {
     const deletedProduct = await Product.findByIdAndDelete(req.params.id);
     if (!deletedProduct) return res.status(404).json({ success: false, message: "Không tìm thấy sản phẩm" });
+
+    const uploadPath = path.join(process.cwd(), '../frontend/public/images');
+    const images = Array.isArray(deletedProduct.image) ? deletedProduct.image : [];
+
+    for (const imageName of images) {
+      const fileName = path.basename(imageName);
+      const filePath = path.join(uploadPath, fileName);
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+    }
+
     res.json({ success: true, message: "Xóa sản phẩm thành công!" });
   } catch (error) {
     res.status(500).json({ success: false, message: "Không thể xóa sản phẩm" });
@@ -583,18 +640,20 @@ app.post('/api/reviews/:id/discussion', authMiddleware, async (req, res) => {
     review.discussions.push(discussionItem);
     await review.save();
     if (user.role === 'admin') {
-    io.to(review.userId.toString()).emit('new_notification', {
-      title: 'Phản hồi mới từ Admin 💬',
-      message: `Quản trị viên đã trả lời đánh giá của bạn tại sản phẩm.`,
-      type: 'discussion'
-    });
-  } else {
-    io.to('admin').emit('new_notification', {
-      title: 'Thảo luận mới từ Khách 💬',
-      message: `Khách hàng ${user.name} vừa phản hồi trong chuỗi thảo luận đánh giá.`,
-      type: 'discussion'
-    });
-  }
+      io.to(review.userId.toString()).emit('new_notification', {
+        title: 'Phản hồi mới từ Admin 💬',
+        message: `Quản trị viên đã trả lời đánh giá của bạn tại sản phẩm.`,
+        type: 'discussion'
+      });
+      await Notification.create({ userId: review.userId, title: 'Phản hồi mới từ Admin 💬', message: `Quản trị viên đã trả lời đánh giá của bạn tại sản phẩm.`, type: 'discussion', meta: { reviewId: review._id, productId: review.productId } });
+    } else {
+      io.to('admin').emit('new_notification', {
+        title: 'Thảo luận mới từ Khách 💬',
+        message: `Khách hàng ${user.name} vừa phản hồi trong chuỗi thảo luận đánh giá.`,
+        type: 'discussion'
+      });
+      await Notification.create({ title: 'Thảo luận mới từ Khách 💬', message: `Khách hàng ${user.name} vừa phản hồi trong chuỗi thảo luận đánh giá.`, type: 'discussion', meta: { reviewId: review._id, productId: review.productId, fromUserId: user._id } });
+    }
     res.json({ success: true, message: "Đã gửi phản hồi trao đổi!", review });
   } catch (error) {
     res.status(500).json({ success: false, message: "Lỗi hệ thống khi gửi thảo luận" });
@@ -711,6 +770,7 @@ app.post('/api/orders',authMiddleware, async (req, res) => {
     message: `Khách hàng ${customerName} vừa đặt đơn hàng ${orderId}.`,
     type: 'order'
   });
+    await Notification.create({ title: 'Đơn hàng mới! 🛒', message: `Khách hàng ${customerName} vừa đặt đơn hàng ${orderId}.`, type: 'order', meta: { orderId } });
     return res.status(201).json({ success: true, order: newOrder, paymentGateway });
   } catch (error) {
     return res.status(500).json({ success: false, message: "Lỗi hệ thống khi xử lý đơn hàng!" });
@@ -764,6 +824,8 @@ app.patch('/api/customer/orders/:id/cancel', authMiddleware, async (req, res) =>
       message: `Đơn hàng ${order.orderId} đã bị khách hàng hủy.`,
       type: 'order_cancel'
     });
+    await Notification.create({ title: 'Đơn hàng bị hủy ⚠️', message: `Đơn hàng ${order.orderId} đã bị khách hàng hủy.`, type: 'order_cancel', meta: { orderId: order.orderId } });
+    await Notification.create({ userId: order.userId, title: 'Đơn hàng bị hủy ⚠️', message: `Đơn hàng ${order.orderId} của bạn đã bị hủy.`, type: 'order_cancel', meta: { orderId: order.orderId } });
     res.json({ success: true, message: "Bạn đã hủy đơn hàng thành công!", order });
   } catch (error) {
     res.status(500).json({ success: false, message: "Lỗi hệ thống khi khách hàng hủy đơn" });
@@ -783,6 +845,14 @@ app.patch('/api/customer/orders/:id/receive', authMiddleware, async (req, res) =
     order.status = 'Đã nhận';
     order.paymentStatus = 'Đã thanh toán'; // Nếu đi COD thì khi nhận hàng coi như đã thanh toán
     await order.save();
+
+    io.to('admin').emit('new_notification', {
+      title: 'Khách hàng đã nhận hàng ✅',
+      message: `Đơn hàng ${order.orderId} đã được khách hàng xác nhận đã nhận.`,
+      type: 'order_received'
+    });
+    await Notification.create({ title: 'Khách hàng đã nhận hàng ✅', message: `Đơn hàng ${order.orderId} đã được khách hàng xác nhận đã nhận.`, type: 'order_received', meta: { orderId: order.orderId } });
+    await Notification.create({ userId: order.userId, title: 'Xác nhận nhận hàng thành công ✅', message: `Bạn đã xác nhận nhận hàng cho đơn ${order.orderId}.`, type: 'order_received', meta: { orderId: order.orderId } });
 
     res.json({ success: true, message: "Xác nhận đã nhận hàng thành công. Cảm ơn bạn!", order });
   } catch (error) {
@@ -822,6 +892,7 @@ app.put('/api/admin/orders/:id', authMiddleware, adminMiddleware, async (req, re
       message: `Đơn hàng ${order.orderId} của bạn đã chuyển sang trạng thái: ${status}.`,
       type: 'order_status'
     });
+    await Notification.create({ userId: order.userId, title: 'Cập nhật đơn hàng 📦', message: `Đơn hàng ${order.orderId} của bạn đã chuyển sang trạng thái: ${status}.`, type: 'order_status', meta: { orderId: order.orderId, status } });
     res.json({ success: true, message: "Cập nhật trạng thái đơn thành công!", order });
   } catch (error) {
     res.status(500).json({ success: false, message: "Không thể cập nhật đơn hàng" });
@@ -1101,22 +1172,98 @@ app.get('/api/customer/orders', authMiddleware, async (req, res) => {
 });
 
 // ==========================================
+//             8. NOTIFICATIONS API
+// ==========================================
+
+app.get('/api/notifications', authMiddleware, async (req, res) => {
+  try {
+    const { limit = 10 } = req.query;
+    const query = req.user.role === 'admin'
+      ? { $or: [{ userId: null }, { userId: { $exists: false } }] }
+      : { userId: req.user.id };
+
+    const [notifications, unreadCount] = await Promise.all([
+      Notification.find(query).sort({ createdAt: -1 }).limit(Number(limit)).lean(),
+      Notification.countDocuments({ ...query, isRead: false })
+    ]);
+
+    res.json({ success: true, notifications, unreadCount });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Không thể tải thông báo' });
+  }
+});
+
+app.patch('/api/notifications/:id/read', authMiddleware, async (req, res) => {
+  try {
+    const query = req.user.role === 'admin'
+      ? { _id: req.params.id, $or: [{ userId: null }, { userId: { $exists: false } }] }
+      : { _id: req.params.id, userId: req.user.id };
+
+    const notification = await Notification.findOneAndUpdate(query, { isRead: true }, { new: true });
+    if (!notification) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy thông báo' });
+    }
+
+    res.json({ success: true, notification });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Không thể cập nhật thông báo' });
+  }
+});
+
+app.patch('/api/notifications/read-all', authMiddleware, async (req, res) => {
+  try {
+    const query = req.user.role === 'admin'
+      ? { $or: [{ userId: null }, { userId: { $exists: false } }] }
+      : { userId: req.user.id };
+
+    await Notification.updateMany(query, { isRead: true });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Không thể đánh dấu đã đọc' });
+  }
+});
+
+// ==========================================
 //             8. INTEGRATED AI CHATBOT (PUBLIC)
 // ==========================================
 
 app.post('/api/chat', async (req, res) => {
   const { message } = req.body;
+
   try {
     const products = await Product.find({}, 'name price stock description category brand');
-    let productContext = "Danh sách sản phẩm cửa hàng TechShop:\n";
+    
+    let productContext = "Dưới đây là danh sách toàn bộ sản phẩm công nghệ đang có sẵn trong cửa hàng TechShop của chúng ta:\n";
     products.forEach((p, index) => {
-      productContext += `${index + 1}. Tên: ${p.name} | Giá: ${p.price.toLocaleString()} VNĐ | Hãng: ${p.brand} | Tồn kho: ${p.stock}\n`;
+      productContext += `${index + 1}. Tên: ${p.name} | Giá: ${p.price.toLocaleString()} VNĐ | Hãng: ${p.brand} | Loại: ${p.category} | Số lượng tồn kho: ${p.stock} chiếc | Mô tả: ${p.description || 'Không có'}\n`;
     });
 
-    const systemPrompt = `Bạn là nhân viên tư vấn bán hàng tại "TechShop". Sử dụng dữ liệu dưới để trả lời thân thiện, tập trung chốt đơn.\n\n${productContext}\nKhách: "${message}"`;
-    const aiResponse = await axios.post(OLLAMA_API, { model: 'gemma:2b', prompt: systemPrompt, stream: false });
+    const systemPrompt = `Bạn là một nhân viên tư vấn bán hàng trực tuyến xuất sắc, thân thiện và am hiểu công nghệ tại cửa hàng "TechShop".
+Nhiệm vụ trọng tâm của bạn là sử dụng ngữ cảnh danh sách sản phẩm được cung cấp bên dưới để trả lời các câu hỏi từ khách hàng một cách ngắn gọn, thuyết phục, tập trung chốt đơn.
+
+Quy tắc bắt buộc khi tư vấn:
+1. LUÔN LUÔN trả lời bằng Tiếng Việt lịch sự, xưng hô là "TechShop" hoặc "Shop" và gọi khách hàng là "bạn" hoặc "quý khách".
+2. Chỉ tư vấn và báo giá các sản phẩm thực tế ĐANG CÓ TRONG KHO theo đúng danh sách bên dưới cung cấp.
+3. Nếu khách hàng hỏi mua sản phẩm có số lượng tồn kho bằng 0, hãy báo là sản phẩm này hiện tại đang tạm hết hàng và gợi ý khách sang một dòng máy khác cùng phân khúc đang còn hàng.
+4. Tuyệt đối KHÔNG ĐƯỢC tự ý bịa đặt thông tin cấu hình hoặc tự tăng/giảm giá tiền sai lệch so với danh sách sản phẩm dưới đây.
+
+--- NGỮ CẢNH DỮ LIỆU CỬA HÀNG ---
+${productContext}
+---------------------------------
+
+Khách hàng nhắn: "${message}"
+Hãy đưa ra câu trả lời tư vấn ngắn gọn, chuyên nghiệp và tối ưu nhất:`;
+
+    const aiResponse = await axios.post(OLLAMA_API, {
+      model: 'gemma:2b', 
+      prompt: systemPrompt,
+      stream: false
+    });
+
     res.json({ content: aiResponse.data.response });
+
   } catch (error) {
+    console.error("Lỗi AI:", error.message);
     res.status(500).json({ content: "Chatbot đang bảo trì, vui lòng quay lại sau!" });
   }
 });
@@ -1143,10 +1290,35 @@ cron.schedule('*/5 * * * *', async () => {
       order.paymentStatus = 'Thanh toán thất bại'; 
       order.status = 'Hủy đơn hàng';
       await order.save();
+      io.to('admin').emit('new_notification', {
+        title: 'Đơn hàng treo đã bị hủy ⏰',
+        message: `Đơn hàng ${order.orderId} đã tự động hủy do quá 5 phút chưa thanh toán.`,
+        type: 'order_auto_cancel'
+      });
+      io.to(order.userId.toString()).emit('new_notification', {
+        title: 'Đơn hàng đã bị hủy ⏰',
+        message: `Đơn hàng ${order.orderId} của bạn đã tự động hủy do quá 5 phút chưa thanh toán.`,
+        type: 'order_auto_cancel'
+      });
+      await Notification.create({ title: 'Đơn hàng treo đã bị hủy ⏰', message: `Đơn hàng ${order.orderId} đã tự động hủy do quá 5 phút chưa thanh toán.`, type: 'order_auto_cancel', meta: { orderId: order.orderId } });
+      await Notification.create({ userId: order.userId, title: 'Đơn hàng đã bị hủy ⏰', message: `Đơn hàng ${order.orderId} của bạn đã tự động hủy do quá 5 phút chưa thanh toán.`, type: 'order_auto_cancel', meta: { orderId: order.orderId } });
       console.log(`[Hệ thống] Đã tự động hủy đơn treo quá 5 phút: ${order.orderId}`);
     }
   } catch (error) {
     console.error('Lỗi khi quét và hủy đơn hàng treo:', error);
+  }
+});
+
+// Dọn thông báo cũ hơn 7 ngày để giữ database nhẹ
+cron.schedule('0 3 * * *', async () => {
+  try {
+    const expiredAt = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const result = await Notification.deleteMany({ createdAt: { $lt: expiredAt } });
+    if (result.deletedCount > 0) {
+      console.log(`[Hệ thống] Đã xóa ${result.deletedCount} thông báo cũ hơn 7 ngày`);
+    }
+  } catch (error) {
+    console.error('Lỗi khi dọn thông báo cũ:', error);
   }
 });
 

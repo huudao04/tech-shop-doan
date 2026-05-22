@@ -172,7 +172,7 @@ const AdminOrders = () => {
 
   return (
     <div className="p-4">
-      <div className="mb-4">
+      <div style={{marginBottom: 20, marginLeft: 10}}>
         <Title level={3}>Quản lý và Duyệt đơn hàng</Title>
       </div>
 

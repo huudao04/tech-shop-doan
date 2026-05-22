@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'; 
-import { Layout, Menu, notification } from 'antd'; 
+import {useNavigate} from 'react-router-dom';
+import { Layout, Menu, notification, Space } from 'antd'; 
 import { 
   DashboardOutlined, 
   ShoppingOutlined, 
@@ -12,18 +13,33 @@ import {
 } from '@ant-design/icons';
 import { Outlet, Link, useLocation } from 'react-router-dom'; // 🌟 1. Thêm useLocation ở đây
 import { io } from 'socket.io-client'; 
+import API from '../utils/axiosClient';
+import NotificationBell from '../components/NotificationBell.jsx';
 
 const { Sider, Content } = Layout;
 
 const AdminLayout = () => {
   const [collapsed, setCollapsed] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
   const user = JSON.parse(localStorage.getItem('user') || '{}');
+  const navigate = useNavigate();
   
   // 🌟 2. Lấy thông tin đường dẫn URL hiện tại của trình duyệt
   const location = useLocation();
 
   useEffect(() => {
     if (!user.id) return;
+
+    const loadNotifications = async () => {
+      try {
+        const response = await API.get('/api/notifications');
+        setNotifications(response.data.notifications || []);
+        setUnreadCount(response.data.unreadCount || 0);
+      } catch (error) {
+        console.error('Không thể tải thông báo admin', error);
+      }
+    };
 
     const socket = io('http://localhost:5000'); 
 
@@ -38,12 +54,55 @@ const AdminLayout = () => {
         description: data.message,
         placement: 'topRight',
       });
+
+      loadNotifications();
     });
+
+    loadNotifications();
 
     return () => {
       socket.disconnect();
     };
   }, [user.id]);
+
+  const markNotificationRead = async (notificationId) => {
+    try {
+      await API.patch(`/api/notifications/${notificationId}/read`);
+      const response = await API.get('/api/notifications');
+      setNotifications(response.data.notifications || []);
+      setUnreadCount(response.data.unreadCount || 0);
+    } catch (error) {
+      console.error('Không thể đánh dấu đã đọc', error);
+    }
+  };
+
+  const markAllNotificationsRead = async () => {
+    try {
+      await API.patch('/api/notifications/read-all');
+      const response = await API.get('/api/notifications');
+      setNotifications(response.data.notifications || []);
+      setUnreadCount(response.data.unreadCount || 0);
+    } catch (error) {
+      console.error('Không thể đánh dấu tất cả đã đọc', error);
+    }
+  };
+
+  const handleOpenNotification = async (item) => {
+    try {
+      await markNotificationRead(item._id);
+
+      if (item.type === 'discussion') {
+        navigate('/admin/reviews');
+        return;
+      }
+
+      if (['order', 'order_status', 'order_cancel', 'order_received', 'order_auto_cancel'].includes(item.type)) {
+        navigate('/admin/orders');
+      }
+    } catch (error) {
+      console.error('Không thể mở thông báo', error);
+    }
+  };
 
   const handleLogout = () => {
     localStorage.removeItem('token');
@@ -88,6 +147,17 @@ const AdminLayout = () => {
       </Sider>
       
       <Layout style={{ backgroundColor: '#f8fafc' }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '16px 24px 0 24px' }}>
+          <Space>
+            <NotificationBell
+              notifications={notifications}
+              unreadCount={unreadCount}
+              onMarkRead={markNotificationRead}
+              onMarkAllRead={markAllNotificationsRead}
+              onOpenNotification={handleOpenNotification}
+            />
+          </Space>
+        </div>
         <Content style={{ margin: '0' }}>
           <Outlet />
         </Content>

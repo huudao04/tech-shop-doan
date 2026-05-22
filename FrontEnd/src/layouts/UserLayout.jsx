@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react'; // Thêm useEffect
-import { Layout, Menu, Input, Badge, Dropdown, Avatar, notification } from 'antd';
+import { Layout, Menu, Input, Badge, Dropdown, Avatar, notification, Space } from 'antd';
 import { ProfileOutlined, ShoppingOutlined, SettingOutlined, LogoutOutlined, ShoppingCartOutlined, UserOutlined } from '@ant-design/icons';
 import { Outlet, Link, useNavigate } from 'react-router-dom';
 import ChatAI from '../components/ChatBotAI.jsx';
+import NotificationBell from '../components/NotificationBell.jsx';
 import { useCart } from '../context/CartContex.jsx';
+import API from '../utils/axiosClient';
 import { io } from 'socket.io-client';
 
 const { Header, Content, Footer } = Layout;
@@ -11,6 +13,8 @@ const { Header, Content, Footer } = Layout;
 const UserLayout = () => {
   const { totalCount } = useCart();
   const navigate = useNavigate();
+  const [notifications, setNotifications] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   // Đọc thông tin người dùng từ localStorage
   const token = localStorage.getItem('token');
@@ -18,6 +22,16 @@ const UserLayout = () => {
   
   useEffect(() => {
     if (!user.id) return;
+
+    const loadNotifications = async () => {
+      try {
+        const response = await API.get('/api/notifications');
+        setNotifications(response.data.notifications || []);
+        setUnreadCount(response.data.unreadCount || 0);
+      } catch (error) {
+        console.error('Không thể tải thông báo khách hàng', error);
+      }
+    };
 
     const socket = io('http://localhost:5000');
 
@@ -36,12 +50,55 @@ const UserLayout = () => {
         placement: 'topRight', // Để góc dưới bên trái tránh đè lên chatbot AI của bạn
         duration: 10,
       });
+
+      loadNotifications();
     });
+
+    loadNotifications();
 
     return () => {
       socket.disconnect();
     };
   }, [user.id]);
+
+  const markNotificationRead = async (notificationId) => {
+    try {
+      await API.patch(`/api/notifications/${notificationId}/read`);
+      const response = await API.get('/api/notifications');
+      setNotifications(response.data.notifications || []);
+      setUnreadCount(response.data.unreadCount || 0);
+    } catch (error) {
+      console.error('Không thể đánh dấu đã đọc', error);
+    }
+  };
+
+  const markAllNotificationsRead = async () => {
+    try {
+      await API.patch('/api/notifications/read-all');
+      const response = await API.get('/api/notifications');
+      setNotifications(response.data.notifications || []);
+      setUnreadCount(response.data.unreadCount || 0);
+    } catch (error) {
+      console.error('Không thể đánh dấu tất cả đã đọc', error);
+    }
+  };
+
+  const handleOpenNotification = async (item) => {
+    try {
+      await markNotificationRead(item._id);
+
+      if (item.type === 'discussion' && item.meta?.productId) {
+        navigate(`/product/${item.meta.productId}#reviews-section`);
+        return;
+      }
+
+      if (['order', 'order_status', 'order_cancel', 'order_received', 'order_auto_cancel'].includes(item.type)) {
+        navigate('/my-orders');
+      }
+    } catch (error) {
+      console.error('Không thể mở thông báo', error);
+    }
+  };
 
   const handleLogout = () => {
     localStorage.clear();
@@ -93,6 +150,14 @@ const UserLayout = () => {
         <Input.Search placeholder="Tìm sản phẩm..." style={{ width: 300, marginRight: 20 }} />
         
         <div style={{ display: 'flex', gap: '25px', fontSize: '20px', alignItems: 'center' }}>
+          <NotificationBell
+            notifications={notifications}
+            unreadCount={unreadCount}
+            onMarkRead={markNotificationRead}
+            onMarkAllRead={markAllNotificationsRead}
+            onOpenNotification={handleOpenNotification}
+          />
+
           <Link to="/cart">
             <Badge count={totalCount}>
               <ShoppingCartOutlined style={{ fontSize: '22px', color: '#000' }} />

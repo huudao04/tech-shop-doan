@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import API from '../utils/axiosClient';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { Row, Col, Typography, Button, Tag, InputNumber, Divider, message, Space, Spin, Rate, Card, Form, Input, List, Avatar, Popconfirm, Modal } from 'antd';
 import { ShoppingCartOutlined, ThunderboltOutlined, ArrowLeftOutlined, UserOutlined, MessageOutlined, EditOutlined, DeleteOutlined, CommentOutlined } from '@ant-design/icons';
 import { useCart } from '../context/CartContex.jsx';
@@ -18,6 +18,7 @@ const ProductDetail = () => {
   const navigate = useNavigate();
   const [form] = Form.useForm();
   const [editForm] = Form.useForm();
+  const location = useLocation();
   
   const { cartItems, updateCart } = useCart();
 
@@ -51,6 +52,19 @@ const ProductDetail = () => {
   useEffect(() => {
     fetchProductAndReviews();
   }, [_id]);
+
+  useEffect(() => {
+    if (location.hash === '#reviews-section') {
+      const timer = setTimeout(() => {
+        const element = document.getElementById('reviews-section');
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 150);
+
+      return () => clearTimeout(timer);
+    }
+  }, [location.hash, reviews.length]);
 
   const handleAddToCart = (showSuccessMessage = true) => {
     if (!product) return null;
@@ -191,7 +205,7 @@ const ProductDetail = () => {
       {/* KHỐI ĐÁNH GIÁ & TRAO ĐỔI QUA LẠI */}
       <Row gutter={[24, 24]}>
         <Col xs={24} lg={14}>
-          <Card title={<Space><MessageOutlined /> <Text strong>Đánh giá & Thảo luận ({reviews.length})</Text></Space>}>
+          <Card id="reviews-section" title={<Space><MessageOutlined /> <Text strong>Đánh giá & Thảo luận ({reviews.length})</Text></Space>}>
             {reviews.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '20px' }}><Text type="secondary">Chưa có đánh giá nào.</Text></div>
             ) : (
