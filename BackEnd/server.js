@@ -444,18 +444,43 @@ app.post('/api/auth/reset-password', async (req, res) => {
 // ==========================================
 
 // Lấy danh sách sản phẩm (Public)
+// API lấy danh sách sản phẩm (Tích hợp thêm bộ lọc khoảng giá Min - Max)
 app.get('/api/products', async (req, res) => {
   try {
-    const { search, category, brand } = req.query;
+    const { search, category, brand, minPrice, maxPrice } = req.query;
     let query = {};
-    if (search) query.name = { $regex: search, $options: 'i' };
-    if (category) query.category = category;
-    if (brand) query.brand = brand;
 
+    // 1. Lọc theo tên sản phẩm
+    if (search) {
+      query.name = { $regex: search, $options: 'i' };
+    }
+
+    // 2. Lọc theo Danh mục
+    if (category) {
+      query.category = category;
+    }
+
+    // 3. Lọc theo Thương hiệu
+    if (brand) {
+      query.brand = brand;
+    }
+
+    // 4. Lọc theo khoảng giá (Ép kiểu sang dạng số nguyên thực tế)
+    if (minPrice || maxPrice) {
+      query.price = {};
+      if (minPrice) {
+        query.price.$gte = parseInt(minPrice);
+      }
+      if (maxPrice) {
+        query.price.$lte = parseInt(maxPrice);
+      }
+    }
+
+    // Truy vấn database và sắp xếp sản phẩm mới nhất lên đầu
     const products = await Product.find(query).sort({ createdAt: -1 });
     res.json(products);
   } catch (error) {
-    res.status(500).json({ message: "Lỗi hệ thống khi tải sản phẩm" });
+    res.status(500).json({ success: false, message: 'Không thể tải danh sách sản phẩm' });
   }
 });
 

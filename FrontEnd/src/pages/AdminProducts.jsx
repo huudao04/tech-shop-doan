@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Button, Typography, Modal, Form, Input, InputNumber, Select, message, Space, Upload, Popconfirm } from 'antd';
-import { PlusOutlined, DeleteOutlined, EditOutlined } from '@ant-design/icons';
+import { Table, Button, Typography, Modal, Form, Input, InputNumber, Select, message, Space, Upload, Popconfirm, Card } from 'antd';
+import { PlusOutlined, DeleteOutlined, EditOutlined, SearchOutlined } from '@ant-design/icons';
 import API from '../utils/axiosClient';
 
 const { Title } = Typography;
@@ -14,10 +14,25 @@ const AdminProducts = () => {
   const [fileList, setFileList] = useState([]); // Quản lý file ảnh đang chọn trên giao diện Form
   const [form] = Form.useForm();
 
+  const [filters, setFilters] = useState({
+    search: '',
+    category: undefined,
+    brand: undefined,
+    minPrice: undefined,
+    maxPrice: undefined
+  });
+
   // Hàm lấy danh sách sản phẩm từ MongoDB
   const fetchProducts = async () => {
     try {
-      const res = await API.get('/api/products');
+      const params = {};
+      if (filters.search) params.search = filters.search;
+      if (filters.category) params.category = filters.category;
+      if (filters.brand) params.brand = filters.brand;
+      if (filters.minPrice !== undefined && filters.minPrice !== null) params.minPrice = filters.minPrice;
+      if (filters.maxPrice !== undefined && filters.maxPrice !== null) params.maxPrice = filters.maxPrice;
+
+      const res = await API.get('/api/products', { params });
       setProducts(res.data);
     } catch (error) {
       message.error('Không thể tải danh sách sản phẩm');
@@ -39,9 +54,12 @@ const AdminProducts = () => {
   };
 
   useEffect(() => {
-    fetchProducts();
     fetchMetadata();
   }, []);
+
+  useEffect(() => {
+    fetchProducts();
+  }, [filters]);
 
   // Mở modal khi bấm nút "Thêm sản phẩm"
   const handleAddClick = () => {
@@ -176,11 +194,64 @@ const AdminProducts = () => {
   ];
 
   return (
-    <div style={{ padding: 24 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 20 }}>
-        <Title level={3}>Quản lý kho hàng</Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={handleAddClick}>Thêm sản phẩm</Button>
-      </div>
+    <div className="p-4">
+      {/* Tiêu đề & Nút Thêm giữ nguyên */}
+      
+      {/* 🌟 3. THANH CÔNG CỤ BỘ LỌC ĐẦY ĐỦ CHO ADMIN */}
+      <Card className="mb-4 shadow-sm" bodyStyle={{ padding: '12px 16px' }}>
+        <Space direction="horizontal" wrap size="small">
+          <Input.Search
+            placeholder="Tìm tên sản phẩm..."
+            allowClear
+            enterButton={<SearchOutlined />}
+            style={{ width: 210 }}
+            onSearch={(value) => setFilters(prev => ({ ...prev, search: value }))}
+          />
+
+          <Select
+            placeholder="Lọc theo danh mục"
+            style={{ width: 170 }}
+            allowClear
+            onChange={(value) => setFilters(prev => ({ ...prev, category: value }))}
+          >
+            {categories.map(c => (
+              <Select.Option key={c._id} value={c.name}>{c.name}</Select.Option>
+            ))}
+          </Select>
+
+          <Select
+            placeholder="Lọc theo thương hiệu"
+            style={{ width: 170 }}
+            allowClear
+            onChange={(value) => setFilters(prev => ({ ...prev, brand: value }))}
+          >
+            {brands.map(b => (
+              <Select.Option key={b._id} value={b.name}>{b.name}</Select.Option>
+            ))}
+          </Select>
+
+          {/* 🌟 Ô Ô NHẬP KHOẢNG GIÁ ĐỘNG */}
+          <InputNumber
+            placeholder="Giá tối thiểu"
+            style={{ width: 140 }}
+            min={0}
+            formatter={value => `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+            parser={value => value.replace(/\$\s?|(,*)/g, '')}
+            onChange={(value) => setFilters(prev => ({ ...prev, minPrice: value }))}
+          />
+          
+          <span style={{ color: '#bfbfbf' }}>-</span>
+
+          <InputNumber
+            placeholder="Giá tối đa"
+            style={{ width: 140 }}
+            min={0}
+            formatter={value => `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+            parser={value => value.replace(/\$\s?|(,*)/g, '')}
+            onChange={(value) => setFilters(prev => ({ ...prev, maxPrice: value }))}
+          />
+        </Space>
+      </Card>
 
       <Table dataSource={products} columns={columns} rowKey="_id" />
 
