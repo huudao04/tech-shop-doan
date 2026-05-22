@@ -115,6 +115,16 @@ const Cart = () => {
       ),
     },
     {
+      title: 'Loại sản phẩm',
+      dataIndex: 'category',
+      key: 'category',
+    },
+    {
+      title: 'Thuơng hiệu',
+      dataIndex: 'brand',
+      key: 'brand',
+    },
+    {
       title: 'Đơn giá',
       dataIndex: 'price',
       key: 'price',
@@ -155,7 +165,7 @@ const Cart = () => {
   }
 
   return (
-    <div style={{ maxWidth: 1000, margin: '0 auto', padding: '20px' }}>
+    <div style={{ width: '100%', margin: '0 auto', padding: '20px' }}>
       <Title level={2}><ShoppingCartOutlined /> Giỏ hàng</Title>
       <Row gutter={24}>
         <Col span={16}>

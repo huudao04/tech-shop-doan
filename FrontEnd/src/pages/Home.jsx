@@ -26,6 +26,7 @@ const Home = () => {
               price={product.price}
               image={product.image}
               category={product.category}
+              brand={product.brand}
             />
           </Col>
         ))}

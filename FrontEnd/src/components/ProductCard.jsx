@@ -1,12 +1,12 @@
 import React from 'react';
-import { Card, Button, Typography, Space, message } from 'antd';
+import { Card, Button, Typography, Space, message, Tag } from 'antd';
 import { ShoppingCartOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { useCart } from '../context/CartContex.jsx';
 
 const { Text, Title } = Typography;
 
-const ProductCard = ({ name, price, image, category, id }) => {
+const ProductCard = ({ name, price, image, category, brand, id }) => {
   const { cartItems, updateCart } = useCart();
   const navigate = useNavigate();
 
@@ -23,7 +23,7 @@ const ProductCard = ({ name, price, image, category, id }) => {
         item.id === id ? { ...item, quantity: item.quantity + 1 } : item
       );
     } else {
-      newCart = [...cartItems, { id, name, price, image, quantity: 1 }];
+      newCart = [...cartItems, { id, name, price, image, brand, quantity: 1, category }];
     }
 
     updateCart(newCart);
@@ -58,7 +58,8 @@ const ProductCard = ({ name, price, image, category, id }) => {
       }
     >
       <Space direction="vertical" style={{ width: '100%' }}>
-        <Text type="secondary" style={{ fontSize: '12px' }}>{category}</Text>
+        <Tag type="secondary" style={{ fontSize: '12px', borderRadius: '8px', fontWeight: 'bold' }}>{category}</Tag>
+        <Tag type="secondary" style={{ fontSize: '12px', borderRadius: '8px', fontWeight: 'bold' }}>{brand}</Tag>
         <Title level={5} ellipsis={{ rows: 1 }} style={{ margin: 0, height: '24px' }}>
           {name}
         </Title>
