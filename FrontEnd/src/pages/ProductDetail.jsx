@@ -73,7 +73,7 @@ const ProductDetail = () => {
     if (existingItem) {
       newCart = cartItems.map(item => item.id === product._id ? { ...item, quantity: item.quantity + quantity } : item);
     } else {
-      newCart = [...cartItems, { id: product._id, name: product.name, price: product.price, image: product.image, quantity: quantity }];
+      newCart = [...cartItems, { id: product._id, name: product.name, price: product.price, image: product.image, quantity: quantity, brand: product.brand, category: product.category }];
     }
     updateCart(newCart);
     if (showSuccessMessage) message.success(`🛒 Đã thêm ${quantity} sản phẩm vào giỏ hàng!`);
@@ -82,7 +82,7 @@ const ProductDetail = () => {
 
   const handleBuyNow = () => {
     if (!product) return;
-    const itemToPay = [{ id: product._id, name: product.name, price: product.price, image: product.image, quantity: quantity }];
+    const itemToPay = [{ id: product._id, name: product.name, price: product.price, image: product.image, quantity: quantity, brand: product.brand, category: product.category }];
     const totalPriceToPay = product.price * quantity;
     message.loading('Đang chuẩn bị đơn hàng...', 0.5);
     setTimeout(() => { navigate('/cart/checkout', { state: { checkoutItems: itemToPay, checkoutTotalPrice: totalPriceToPay } }); }, 500);

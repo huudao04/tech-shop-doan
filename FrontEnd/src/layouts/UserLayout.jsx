@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react'; // Thêm useEffect
-import { Layout, Menu, Input, Badge, Dropdown, Avatar, notification, Space } from 'antd';
-import { ProfileOutlined, ShoppingOutlined, SettingOutlined, LogoutOutlined, ShoppingCartOutlined, UserOutlined } from '@ant-design/icons';
-import { Outlet, Link, useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react'; 
+import { Layout, Menu, Input, Badge, Dropdown, Avatar, notification, Space, AutoComplete } from 'antd';
+import { ProfileOutlined, ShoppingOutlined, SettingOutlined, LogoutOutlined, ShoppingCartOutlined, UserOutlined, SearchOutlined } from '@ant-design/icons';
+import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
 import ChatAI from '../components/ChatBotAI.jsx';
 import NotificationBell from '../components/NotificationBell.jsx';
 import { useCart } from '../context/CartContex.jsx';
@@ -13,13 +13,86 @@ const { Header, Content, Footer } = Layout;
 const UserLayout = () => {
   const { totalCount } = useCart();
   const navigate = useNavigate();
+  const location = useLocation();
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [searchKeyword, setSearchKeyword] = useState('');
+  const [searchOptions, setSearchOptions] = useState([]);
 
   // Đọc thông tin người dùng từ localStorage
   const token = localStorage.getItem('token');
   const user = JSON.parse(localStorage.getItem('user') || '{}');
-  
+
+  const getSelectedMenuKey = () => {
+    const path = location.pathname;
+    if (path === '/' || path === '/home') return ['1'];
+    if (path.startsWith('/products') || path.startsWith('/product/')) return ['2'];
+    if (path === '/cart') return ['3']; // Ví dụ nếu bạn có tab giỏ hàng trên thanh menu
+    return [];
+  };
+  // Hàm gọi API lấy danh sách gợi ý khi người dùng gõ chữ
+  useEffect(() => {
+    const delayDebounceFn = setTimeout(async () => {
+      if (searchKeyword.trim().length > 0) {
+        try {
+          const response = await API.get(`/api/products/search-suggest?q=${encodeURIComponent(searchKeyword)}`);
+          
+          // ĐỊNH DẠNG: Thêm hình ảnh và bọc khối dữ liệu gọn gàng
+          const options = response.data.map(prod => ({
+            value: prod.name,
+            key: prod._id,
+            image: Array.isArray(prod.image) ? prod.image[0] : prod.image,
+            label: (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '4px 0' }}>
+                {/* Ảnh sản phẩm nhỏ bên trái dropdown */}
+                <img 
+                  src={(() => {
+                    const imageName = Array.isArray(prod.image) ? prod.image[0] : prod.image;
+                    return imageName
+                      ? (imageName.startsWith('http') ? imageName : `/images/${imageName}`)
+                      : 'https://via.placeholder.com/40';
+                  })()} 
+                  alt={prod.name}
+                  style={{ width: '40px', height: '40px', objectFit: 'cover', borderRadius: '4px', border: '1px solid #f0f0f0' }}
+                  onError={(e) => { e.currentTarget.src = 'https://via.placeholder.com/40'; }} // Fallback nếu lỗi ảnh
+                />
+                {/* Thông tin Tên và Giá bên phải */}
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                  <span style={{ fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: '#333' }}>
+                    {prod.name}
+                  </span>
+                  <span style={{ color: '#ff4d4f', fontSize: '12px', fontWeight: 'bold', marginTop: '2px' }}>
+                    {prod.price?.toLocaleString()} VNĐ
+                  </span>
+                </div>
+              </div>
+            )
+          }));
+          setSearchOptions(options);
+        } catch (error) {
+          console.error("Lỗi lấy dữ liệu gợi ý tìm kiếm:", error);
+        }
+      } else {
+        setSearchOptions([]);
+      }
+    }, 300);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [searchKeyword]);
+
+  // Hàm xử lý khi người dùng chọn một sản phẩm từ gợi ý
+  const handleSelectProduct = (value, option) => {
+    setSearchKeyword(value);
+    navigate(`/product/${option.key}`);
+  };
+
+  // Hàm xử lý khi người dùng nhấn Enter trong ô tìm kiếm
+  const handleSearchSubmit = () => {
+    if (searchKeyword.trim()) {
+      navigate(`/products?search=${encodeURIComponent(searchKeyword.trim())}`);
+    }
+  };
+
   useEffect(() => {
     if (!user.id) return;
 
@@ -140,12 +213,41 @@ const UserLayout = () => {
         <Link to="/">
           <div className="logo" style={{ fontWeight: 'bold', fontSize: '20px', marginRight: '40px', color: '#1677ff' }}>TECH-SHOP</div>
         </Link>
-        <Menu mode="horizontal" defaultSelectedKeys={['1']} style={{ flex: 1, borderBottom: 'none' }}>
+        <Menu mode="horizontal" selectedKeys={getSelectedMenuKey()} style={{ flex: 1, borderBottom: 'none' }}>
           <Menu.Item key="1"><Link to="/">Trang chủ</Link></Menu.Item>
           <Menu.Item key="2"><Link to="/products">Sản phẩm</Link></Menu.Item>
         </Menu>
-        
-        <Input.Search placeholder="Tìm sản phẩm..." style={{ width: 300, marginRight: 20 }} />
+          
+          <AutoComplete
+            options={searchOptions}
+            onSelect={handleSelectProduct}
+            onSearch={(value) => setSearchKeyword(value)}
+            value={searchKeyword}
+            style={{ 
+              width: 550, 
+              boxShadow: 'none',     
+              border: 'none',             
+              background: 'transparent'    
+            }}
+            dropdownStyle={{ maxHeight: 190, overflowY: 'auto' }}
+          >
+            <Input
+              placeholder="Tìm kiếm sản phẩm..."
+              style={{ height: '40px', borderRadius: '20px', marginTop: '13px', marginRight: '30px' }}
+              allowClear
+              suffix={
+                <SearchOutlined 
+                  style={{ fontSize: 16, color: '#1890ff', cursor: 'pointer' }} 
+                  onClick={handleSearchSubmit} 
+                />
+              }
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  handleSearchSubmit();
+                }
+              }}
+            />
+          </AutoComplete>
         
         <div style={{ display: 'flex', gap: '25px', fontSize: '20px', alignItems: 'center' }}>
           <NotificationBell

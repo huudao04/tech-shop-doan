@@ -457,12 +457,12 @@ app.get('/api/products', async (req, res) => {
 
     // 2. Lọc theo Danh mục
     if (category) {
-      query.category = category;
+      query.category = { $in: category.split(',') };
     }
 
     // 3. Lọc theo Thương hiệu
     if (brand) {
-      query.brand = brand;
+      query.brand = { $in: brand.split(',') };
     }
 
     // 4. Lọc theo khoảng giá (Ép kiểu sang dạng số nguyên thực tế)
@@ -483,7 +483,36 @@ app.get('/api/products', async (req, res) => {
     res.status(500).json({ success: false, message: 'Không thể tải danh sách sản phẩm' });
   }
 });
+app.get('/api/products/search-suggest', async (req, res) => {
+  try {
+    const { q } = req.query;
+    if (!q) return res.json([]);
 
+    // Hàm chuyển đổi chuỗi tiếng Việt thành biểu thức regex hỗ trợ cả có dấu và không dấu
+    const makeVietnameseRegex = (keyword) => {
+      let str = keyword.toLowerCase().trim();
+      str = str.replace(/[aàáạảãâầấậẩẫăằắặẳẵ]/g, '[aàáạảãâầấậẩẫăằắặẳẵ]');
+      str = str.replace(/[eèéẹẻẽêềếệểễ]/g, '[eèéẹẻẽêềếệểễ]');
+      str = str.replace(/[iìíịỉĩ]/g, '[iìíịỉĩ]');
+      str = str.replace(/[oòóọỏõôồốộổỗơờớợởỡ]/g, '[oòóọỏõôồốộổỗơờớợởỡ]');
+      str = str.replace(/[uùúụủũưừứựửữ]/g, '[uùúụủũưừứựửữ]');
+      str = str.replace(/[yỳýỵỷỹ]/g, '[yỳýỵỷỹ]');
+      str = str.replace(/[dđ]/g, '[dđ]');
+      return new RegExp(str, 'i'); // 'i' giúp không phân biệt hoa thường
+    };
+
+    const searchRegex = makeVietnameseRegex(q);
+
+    const products = await Product.find({ name: { $regex: searchRegex } })
+      .select('_id name price image') 
+      .limit(10);
+
+    res.json(products);
+  } catch (error) {
+    console.error('Lỗi tìm kiếm gợi ý:', error);
+    res.status(500).json({ success: false, message: 'Lỗi hệ thống' });
+  }
+});
 // Lấy danh mục động (Public)
 app.get('/api/categories', async (req, res) => {
   try {
