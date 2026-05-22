@@ -661,13 +661,60 @@ app.post('/api/reviews/:id/discussion', authMiddleware, async (req, res) => {
   }
 });
 
-// [ADMIN] Lấy toàn bộ đánh giá
+// 1. API ĐỘC LẬP: Quét trực tiếp dữ liệu từ collection 'ratings' đã tạo tay trong Compass
+app.get('/api/admin/reviews/ratings', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const ratings = await mongoose.connection.db
+      .collection('ratings')
+      .find({})
+      .sort({ value: -1 })
+      .toArray();
+    res.json({ success: true, data: ratings });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Lỗi không thể đọc dữ liệu số sao!" });
+  }
+});
+
+// 2. API DANH SÁCH REVIEW: Cập nhật bộ lọc nâng cao tích hợp xử lý tham số gửi lên
 app.get('/api/admin/reviews', authMiddleware, adminMiddleware, async (req, res) => {
   try {
-    const reviews = await Review.find().populate('productId', 'name image').sort({ createdAt: -1 });
+    const { searchCustomer, productId, rating, date } = req.query;
+    let query = {};
+
+    // Lọc theo tên khách hàng (Quét text không phân biệt hoa thường)
+    if (searchCustomer) {
+      query.name = { $regex: searchCustomer, $options: 'i' };
+    }
+
+    // Lọc chính xác theo Sản phẩm
+    if (productId) {
+      query.productId = productId;
+    }
+
+    // Lọc theo số sao (Ép chuỗi string nhận từ query params thành số nguyên)
+    if (rating) {
+      query.rating = parseInt(rating);
+    }
+
+    // Lọc Ngày gửi thông minh: Bao trọn gói từ lúc sang ngày mới đến đêm muộn hôm đó
+    if (date) {
+      const startOfDay = new Date(date);
+      startOfDay.setHours(0, 0, 0, 0);
+
+      const endOfDay = new Date(date);
+      endOfDay.setHours(23, 59, 59, 999);
+
+      query.createdAt = { $gte: startOfDay, $lte: endOfDay };
+    }
+
+    // Tiến hành truy vấn liên kết lấy tên sản phẩm hiển thị, xếp đánh giá mới nhất lên đầu
+    const reviews = await Review.find(query)
+      .populate('productId', 'name image')
+      .sort({ createdAt: -1 });
+
     res.json(reviews);
   } catch (error) {
-    res.status(500).json({ message: "Lỗi hệ thống không thể tải dữ liệu đánh giá" });
+    res.status(500).json({ success: false, message: "Lỗi hệ thống khi tải danh sách đánh giá!" });
   }
 });
 
@@ -1255,6 +1302,7 @@ app.get('/api/admin/export-reports', authMiddleware, adminMiddleware, async (req
     res.status(500).json({ message: 'Không thể tạo file báo cáo Excel' });
   }
 });
+
 // ==========================================
 //        BỔ SUNG: API ADMIN QUẢN LÝ USER
 // ==========================================
@@ -1277,7 +1325,7 @@ app.get('/api/admin/customers/statuses', authMiddleware, adminMiddleware, (req, 
 app.get('/api/admin/customers', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const { search, status, date } = req.query;
-    let query = {}; // Mặc định quét tất cả các tài khoản khách hàng
+    let query = { role: 'customer' };
 
     // Lọc theo trạng thái tài khoản (Đổi chuỗi text nhận từ query sang giá trị Boolean chuẩn)
     if (status) {

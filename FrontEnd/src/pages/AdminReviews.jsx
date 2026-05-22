@@ -1,16 +1,25 @@
 import React, { useEffect, useState } from 'react';
-import { Table, Button, Rate, Space, Avatar, message, Popconfirm, Card, Typography, Modal, Form, Input, Select } from 'antd';
-import { DeleteOutlined, CommentOutlined, PlusOutlined, EditOutlined } from '@ant-design/icons';
+import { Table, Button, Rate, Space, Avatar, message, Popconfirm, Card, Typography, Modal, Form, Input, Select, DatePicker } from 'antd';
+import { DeleteOutlined, CommentOutlined, PlusOutlined, EditOutlined, SearchOutlined } from '@ant-design/icons';
 import API from '../utils/axiosClient';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
+const { Option } = Select;
 
 const AdminReviews = () => {
   const [reviews, setReviews] = useState([]);
   const [products, setProducts] = useState([]); // Danh sách sản phẩm để chọn khi tạo/sửa fake review
   const [loading, setLoading] = useState(false);
-  
+
+  const [ratingOptions, setRatingOptions] = useState([]);
+  const [filters, setFilters] = useState({
+    searchCustomer: '',
+    productId: undefined,
+    rating: undefined,
+    date: undefined
+  });
+
   // Các trạng thái đóng mở modal
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
   const [isReplyModalOpen, setIsReplyModalOpen] = useState(false);
@@ -19,34 +28,55 @@ const AdminReviews = () => {
   const [form] = Form.useForm();
   const [replyForm] = Form.useForm();
 
-  // 1. Lấy danh sách đánh giá
-  const fetchReviews = async () => {
-    setLoading(true);
+  // 🌟 Call API độc lập lấy danh sách Số sao từ collection ratings thô
+  const fetchRatingsMetadata = async () => {
     try {
-      const response = await API.get('/api/admin/reviews');
-      setReviews(response.data);
+      const res = await API.get('/api/admin/reviews/ratings');
+      if (res.data.success) {
+        setRatingOptions(res.data.data);
+      }
     } catch (error) {
-      console.error('Lỗi lấy danh sách đánh giá:', error);
-      message.error('Không thể tải danh sách phản hồi từ hệ thống!');
-    } finally {
-      setLoading(false);
+      console.error("Không thể tải cấu hình số sao:", error);
     }
   };
-
-  // Lấy danh sách sản phẩm phục vụ bài toán Fake Review
+  // 🌟 Call API độc lập lấy danh sách sản phẩm để chọn khi tạo/sửa fake review
   const fetchProducts = async () => {
     try {
       const response = await API.get('/api/products');
-      setProducts(response.data);
+      setProducts(response.data.products || response.data);
     } catch (error) {
       console.error('Lỗi lấy danh sách sản phẩm:', error);
     }
   };
 
+  // Lấy danh sách review kèm theo truyền tham số bộ lọc lên Backend
+  const fetchReviews = async () => {
+    setLoading(true);
+    try {
+      const params = {};
+      if (filters.searchCustomer) params.searchCustomer = filters.searchCustomer;
+      if (filters.productId) params.productId = filters.productId;
+      if (filters.rating) params.rating = filters.rating;
+      if (filters.date) params.date = filters.date;
+
+      const response = await API.get('/api/admin/reviews', { params });
+      setReviews(response.data);
+    } catch (error) {
+      console.error('Lỗi lấy danh sách đánh giá:', error);
+      message.error('Không thể tải danh sách đánh giá!');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchProducts();
+    fetchRatingsMetadata();
+  }, []);
+
   useEffect(() => {
     fetchReviews();
-    fetchProducts();
-  }, []);
+  }, [filters]);
 
   // 2. Xóa phản hồi/đánh giá
   const handleDelete = async (id) => {
@@ -257,6 +287,50 @@ const handleReplySubmit = async () => {
           Thêm Đánh Giá
         </Button>
       </div>
+
+      <Card className="mb-4 shadow-sm" bodyStyle={{ padding: '12px 16px' }}>
+        <Space direction="horizontal" wrap size="small">
+          
+          <Input.Search
+            placeholder="Tìm tên khách hàng..."
+            allowClear
+            enterButton={<SearchOutlined />}
+            style={{ width: 220 }}
+            onSearch={(value) => setFilters(prev => ({ ...prev, searchCustomer: value }))}
+          />
+
+          <Select
+            placeholder="Chọn lọc theo sản phẩm"
+            style={{ width: 250 }}
+            allowClear
+            showSearch
+            optionFilterProp="children"
+            onChange={(value) => setFilters(prev => ({ ...prev, productId: value }))}
+          >
+            {products.map(p => (
+              <Option key={p._id} value={p._id}>{p.name}</Option>
+            ))}
+          </Select>
+
+          <Select
+            placeholder="Lọc số sao (Rating)"
+            style={{ width: 180 }}
+            allowClear
+            onChange={(value) => setFilters(prev => ({ ...prev, rating: value }))}
+          >
+            {/* 🌟 Vòng lặp map tự động đổ dữ liệu số sao lấy từ API ratings thô */}
+            {ratingOptions.map(rate => (
+              <Option key={rate.value} value={rate.value}>{rate.label}</Option>
+            ))}
+          </Select>
+
+          <DatePicker 
+            placeholder="Chọn ngày gửi đánh giá"
+            style={{ width: 180 }}
+            onChange={(date, dateString) => setFilters(prev => ({ ...prev, date: dateString || undefined }))}
+          />
+        </Space>
+      </Card>
 
       {/* Khối Bảng dữ liệu chính */}
       <Card className="shadow-sm border-gray-100 rounded-lg">

@@ -59,7 +59,7 @@ const AdminUsers = () => {
     try {
       const token = localStorage.getItem('token');
       const response = await API.patch(
-        `api/admin/customers/${record._id}/toggle-status`,
+        `/api/admin/customers/${record._id}/toggle-status`,
         {},
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -138,6 +138,12 @@ const AdminUsers = () => {
             onSearch={(value) => setFilters(prev => ({ ...prev, search: value }))}
           />
 
+          <DatePicker 
+            placeholder="Chọn ngày đăng ký"
+            style={{ width: 170 }}
+            onChange={(date, dateString) => setFilters(prev => ({ ...prev, date: dateString || undefined }))}
+          />
+
           <Select
             placeholder="Lọc trạng thái tài khoản"
             style={{ width: 200 }}
@@ -149,12 +155,6 @@ const AdminUsers = () => {
               <Option key={status.value} value={status.value}>{status.label}</Option>
             ))}
           </Select>
-
-          <DatePicker 
-            placeholder="Chọn ngày đăng ký"
-            style={{ width: 170 }}
-            onChange={(date, dateString) => setFilters(prev => ({ ...prev, date: dateString || undefined }))}
-          />
         </Space>
       </div>
 

@@ -43,7 +43,7 @@ const UserOrders = () => {
         if (filters.province) params.province = filters.province;
         if (filters.date) params.date = filters.date;
 
-        const res = await API.get('api/customer/orders', { params });
+        const res = await API.get('/api/customer/orders', { params });
         setOrders(res.data);
       } catch (error) {
         message.error('Không thể tải danh sách đơn hàng của bạn');
