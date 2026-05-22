@@ -1259,38 +1259,55 @@ app.get('/api/admin/export-reports', authMiddleware, adminMiddleware, async (req
 //        BỔ SUNG: API ADMIN QUẢN LÝ USER
 // ==========================================
 
-// [ADMIN] Lấy danh sách toàn bộ tài khoản Khách hàng (customer)
-app.get('/api/admin/customers', authMiddleware, adminMiddleware, async (req, res) => {
+// 1. API ĐỘC LẬP: Lấy danh sách cấu hình trạng thái tài khoản người dùng
+app.get('/api/admin/customers/statuses', authMiddleware, adminMiddleware, (req, res) => {
   try {
-    // Chỉ lấy tài khoản có role là customer, không hiển thị mật khẩu vì bảo mật
-    const customers = await User.find({ role: 'customer' }).select('-password').sort({ createdAt: -1 });
-    res.json(customers);
+    // Trả về mảng trạng thái có cấu trúc rõ ràng để map vào Select
+    const accountStatuses = [
+      { label: 'Đang hoạt động', value: 'true' },
+      { label: 'Đã khóa', value: 'false' }
+    ];
+    res.json({ success: true, data: accountStatuses });
   } catch (error) {
-    res.status(500).json({ message: "Không thể tải danh sách khách hàng" });
+    res.status(500).json({ success: false, message: "Không thể lấy danh sách trạng thái tài khoản" });
   }
 });
 
-// [ADMIN] Bật / Tắt trạng thái hoạt động (Khóa / Mở khóa) của khách hàng
-app.patch('/api/admin/customers/:id/toggle-status', authMiddleware, adminMiddleware, async (req, res) => {
+// 2. API DANH SÁCH USER: Cập nhật nhận query tìm kiếm động nâng cao
+app.get('/api/admin/customers', authMiddleware, adminMiddleware, async (req, res) => {
   try {
-    const user = await User.findById(req.params.id);
-    if (!user) return res.status(404).json({ success: false, message: "Không tìm thấy người dùng!" });
-    
-    if (user.role === 'admin') {
-      return res.status(400).json({ success: false, message: "Không thể thao tác trên tài khoản Admin khác!" });
+    const { search, status, date } = req.query;
+    let query = {}; // Mặc định quét tất cả các tài khoản khách hàng
+
+    // Lọc theo trạng thái tài khoản (Đổi chuỗi text nhận từ query sang giá trị Boolean chuẩn)
+    if (status) {
+      query.isActive = status === 'true';
     }
 
-    // Đảo ngược trạng thái hiện tại
-    user.isActive = !user.isActive;
-    await user.save();
+    // Lọc Ngày đăng ký thông minh: Quét trọn gói từ đầu ngày đến cuối ngày
+    if (date) {
+      const startOfDay = new Date(date);
+      startOfDay.setHours(0, 0, 0, 0);
 
-    res.json({ 
-      success: true, 
-      message: `${user.isActive ? 'Mở khóa' : 'Khóa'} tài khoản thành công!`, 
-      user: { id: user._id, email: user.email, isActive: user.isActive } 
-    });
+      const endOfDay = new Date(date);
+      endOfDay.setHours(23, 59, 59, 999);
+
+      query.createdAt = { $gte: startOfDay, $lte: endOfDay };
+    }
+
+    // Freetext: Tìm kiếm song song đồng thời theo Tên HOẶC Email không phân biệt hoa thường
+    if (search) {
+      query.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { email: { $regex: search, $options: 'i' } }
+      ];
+    }
+
+    // Tiến hành truy vấn database và sắp xếp tài khoản mới đăng ký lên đầu
+    const users = await User.find(query).sort({ createdAt: -1 });
+    res.json(users);
   } catch (error) {
-    res.status(500).json({ success: false, message: "Lỗi hệ thống khi cập nhật trạng thái người dùng" });
+    res.status(500).json({ success: false, message: 'Lỗi hệ thống khi tải dữ liệu người dùng' });
   }
 });
 // [CUSTOMER] Lấy danh sách đơn hàng cá nhân

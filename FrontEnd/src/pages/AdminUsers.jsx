@@ -1,22 +1,43 @@
 import React, { useEffect, useState } from 'react';
-import { Table, Switch, message, Tag, Space, Card, Typography } from 'antd';
-import { UserOutlined, CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons';
-import axios from 'axios';
+import { Table, Switch, message, Tag, Space, Card, Typography, Input, Select, DatePicker } from 'antd';
+import { CheckCircleOutlined, CloseCircleOutlined, SearchOutlined, UserOutlined } from '@ant-design/icons';
+import API from '../utils/axiosClient';
 
 const { Title } = Typography;
+const { Option } = Select;
 
 const AdminUsers = () => {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [accountStatuses, setAccountStatuses] = useState([]);
+  
+  const [filters, setFilters] = useState({
+    search: '',
+    status: undefined,
+    date: undefined
+  });
+
+  const fetchStatusesMetadata = async () => {
+    try {
+      const res = await API.get('/api/admin/customers/statuses');
+      if (res.data.success) {
+        setAccountStatuses(res.data.data);
+      }
+    } catch (error) {
+      console.error("Lỗi khi gọi danh sách trạng thái user:", error);
+    }
+  };
 
   // Lấy danh sách khách hàng từ API
-  const fetchCustomers = async () => {
-    setLoading(true);
+ const fetchCustomers = async () => {
     try {
-      const token = localStorage.getItem('token');
-      const response = await axios.get('http://localhost:5000/api/admin/customers', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      setLoading(true);
+      const params = {};
+      if (filters.search) params.search = filters.search;
+      if (filters.status) params.status = filters.status;
+      if (filters.date) params.date = filters.date;
+
+      const response = await API.get('/api/admin/customers', { params });
       setUsers(response.data);
     } catch (error) {
       message.error(error.response?.data?.message || 'Không thể tải danh sách người dùng!');
@@ -26,15 +47,19 @@ const AdminUsers = () => {
   };
 
   useEffect(() => {
-    fetchCustomers();
+    fetchStatusesMetadata();
   }, []);
+
+  useEffect(() => {
+    fetchCustomers();
+  }, [filters]);
 
   // Xử lý bật tắt trạng thái hoạt động (Khóa / Mở khóa)
   const handleToggleStatus = async (checked, record) => {
     try {
       const token = localStorage.getItem('token');
-      const response = await axios.patch(
-        `http://localhost:5000/api/admin/customers/${record._id}/toggle-status`,
+      const response = await API.patch(
+        `api/admin/customers/${record._id}/toggle-status`,
         {},
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -98,18 +123,46 @@ const AdminUsers = () => {
 
   return (
     <Card bordered={false}>
-      <div style={{ marginBottom: 24 }}>
-        <Title level={3}>Quản lý tài khoản khách hàng</Title>
-        <span style={{ color: '#8c8c8c' }}>Danh sách người dùng đăng ký tài khoản mua sắm tại hệ thống TechShop</span>
+      <div style={{ marginBottom: 24 }} className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div style={{ marginBottom: 8 }}>
+          <Title level={3} style={{ margin: 0 }}>Quản lý tài khoản khách hàng</Title>
+          <span style={{ color: '#8c8c8c' }}>Danh sách người dùng đăng ký tài khoản mua sắm tại hệ thống TechShop</span>
+        </div>
+
+        <Space direction="horizontal" wrap size="small">
+          <Input.Search
+            placeholder="Tìm theo tên hoặc email..."
+            allowClear
+            enterButton={<SearchOutlined />}
+            style={{ width: 250 }}
+            onSearch={(value) => setFilters(prev => ({ ...prev, search: value }))}
+          />
+
+          <Select
+            placeholder="Lọc trạng thái tài khoản"
+            style={{ width: 200 }}
+            allowClear
+            onChange={(value) => setFilters(prev => ({ ...prev, status: value }))}
+          >
+            {/* 🌟 Đổ dữ liệu động lấy trực tiếp từ API độc lập */}
+            {accountStatuses.map(status => (
+              <Option key={status.value} value={status.value}>{status.label}</Option>
+            ))}
+          </Select>
+
+          <DatePicker 
+            placeholder="Chọn ngày đăng ký"
+            style={{ width: 170 }}
+            onChange={(date, dateString) => setFilters(prev => ({ ...prev, date: dateString || undefined }))}
+          />
+        </Space>
       </div>
 
-      <Table
-        columns={columns}
-        dataSource={users}
-        rowKey="_id"
+      <Table 
+        columns={columns} 
+        dataSource={users} 
+        rowKey="_id" 
         loading={loading}
-        pagination={{ pageSize: 10 }}
-        locale={{ emptyText: 'Chưa có tài khoản khách hàng nào đăng ký' }}
       />
     </Card>
   );
