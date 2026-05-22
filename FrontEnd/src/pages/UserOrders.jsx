@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Tag, Typography, message, Card, Popover, Button, Popconfirm } from 'antd';
+import { Table, Tag, Typography, message, Card, Popover, Button, Popconfirm, Space, Input, Select, DatePicker } from 'antd';
 import { EyeOutlined, ClockCircleOutlined, CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons';
 import API from '../utils/axiosClient'; 
 
@@ -8,22 +8,56 @@ const { Title } = Typography;
 const UserOrders = () => {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [statuses, setStatuses] = useState([]);
+  const [paymentMethods, setPaymentMethods] = useState([]);
 
-  const fetchMyOrders = async () => {
+  const [filters, setFilters] = useState({
+    search: '',
+    status: undefined,
+    paymentMethod: undefined,
+    province: undefined,
+    date: undefined
+  });
+
+  const fetchFilterData = async () => {
     try {
-      setLoading(true);
-      const res = await API.get('api/customer/orders');
-      setOrders(res.data);
+      const [statusRes, paymentRes] = await Promise.all([
+        API.get('/api/orders/statuses'),
+        API.get('/api/orders/payment-methods')
+      ]);
+
+      if (statusRes.data.success) setStatuses(statusRes.data.data);
+      if (paymentRes.data.success) setPaymentMethods(paymentRes.data.data);
     } catch (error) {
-      message.error('Không thể tải danh sách đơn hàng của bạn');
-    } finally {
-      setLoading(false);
+      console.error("Lỗi khi tải dữ liệu bộ lọc phía khách hàng:", error);
     }
   };
 
-  useEffect(() => {
-    fetchMyOrders();
-  }, []);
+  const fetchMyOrders = async () => {
+      try {
+        setLoading(true);
+        const params = {};
+        if (filters.search) params.search = filters.search;
+        if (filters.status) params.status = filters.status;
+        if (filters.paymentMethod) params.paymentMethod = filters.paymentMethod;
+        if (filters.province) params.province = filters.province;
+        if (filters.date) params.date = filters.date;
+
+        const res = await API.get('api/customer/orders', { params });
+        setOrders(res.data);
+      } catch (error) {
+        message.error('Không thể tải danh sách đơn hàng của bạn');
+      } finally {
+        setLoading(false);
+      }
+    };
+    useEffect(() => {
+    fetchFilterData();
+    }, []);
+
+    useEffect(() => {
+      fetchMyOrders();
+    }, [filters]);
 
   // Người dùng chủ động hủy đơn hàng
   const handleCancelOrder = async (id) => {
@@ -197,22 +231,69 @@ const UserOrders = () => {
     }
   ];
 
-  return (
+ return (
     <Card className="shadow-sm rounded-lg border border-gray-100">
-      <div className="mb-4 flex items-center gap-2">        
+      <div className="mb-4 flex flex-col lg:flex-row lg:items-center justify-between gap-4">        
         <Title level={4} style={{ margin: 0 }}>
             <ClockCircleOutlined style={{ marginRight: '8px' }} />
             Lịch sử đơn hàng của tôi
         </Title>
+
+        {/* 🌟 ĐỒNG BỘ THANH BỘ LỌC ĐA NĂNG SANG CHO USER */}
+        <Space direction="horizontal" wrap size="small">
+          <Input.Search
+            placeholder="Nhập mã đơn cần tìm..."
+            allowClear
+            style={{ width: 200 }}
+            onSearch={(value) => setFilters(prev => ({ ...prev, search: value }))}
+          />
+
+          <DatePicker 
+            placeholder="Chọn ngày mua"
+            style={{ width: 150 }}
+            onChange={(date, dateString) => setFilters(prev => ({ ...prev, date: dateString || undefined }))}
+          />
+
+          
+          <Input 
+            placeholder="Lọc Tỉnh/Thành..." 
+            allowClear
+            style={{ width: 150 }}
+            onChange={(e) => setFilters(prev => ({ ...prev, province: e.target.value }))}
+          />
+
+          <Select
+            placeholder="Phương thức thanh toán"
+            style={{ width: 160 }}
+            allowClear
+            onChange={(value) => setFilters(prev => ({ ...prev, paymentMethod: value }))}
+          >
+            {paymentMethods.map(method => (
+              <Option key={method} value={method}>
+                {method === 'COD' ? 'Tiền mặt (COD)' : 'Chuyển khoản (BANK)'}
+              </Option>
+            ))}
+          </Select>
+
+         <Select
+          placeholder="Lọc trạng thái"
+          style={{ width: 140 }}
+          allowClear
+          onChange={(value) => setFilters(prev => ({ ...prev, status: value }))}
+        >
+          {statuses.map(status => (
+            <Option key={status} value={status}>{status}</Option>
+          ))}
+        </Select>
+
+        </Space>
       </div>
 
       <Table 
         dataSource={orders} 
         columns={columns} 
-        rowKey="_id" 
+        rowKey="_id"
         loading={loading}
-        pagination={{ pageSize: 5 }}
-        className="overflow-hidden"
       />
     </Card>
   );

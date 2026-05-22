@@ -137,6 +137,7 @@ const orderSchema = new mongoose.Schema({
   customerName: { type: String, required: true },
   phoneNumber: { type: String, required: true },
   shippingAddress: { type: String, required: true },
+  provinceFilter: { type: String, default: "Khác" },
   paymentMethod: { type: String, enum: ['COD', 'BANK_TRANSFER'], required: true },
   paymentStatus: { type: String, enum: ['Chờ thanh toán', 'Đã thanh toán', 'Thanh toán thất bại'], default: 'Chờ thanh toán' },
   status: { 
@@ -728,11 +729,42 @@ app.delete('/api/admin/reviews/:id', authMiddleware, adminMiddleware, async (req
 // ==========================================
 
 // Đặt hàng mới (Public)
-app.post('/api/orders',authMiddleware, async (req, res) => {
+// Hàm phụ để chuẩn hóa chuỗi phục vụ việc so khớp địa chỉ
+const removeVietnameseTones = (str) => {
+  return str
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'D')
+    .toLowerCase()
+    .trim();
+};
+app.post('/api/orders', authMiddleware, async (req, res) => {
   try {
     const { customerName, phoneNumber, shippingAddress, paymentMethod, items, totalPrice } = req.body;
     const userId = req.user.id;
 
+    // --- LOGIC TRÍCH XUẤT TỈNH/THÀNH TỪ ĐỊA CHỈ KHÁCH GÕ ---
+    let matchedProvinceName = "Khác";
+    const db = mongoose.connection;
+    // Lấy danh sách tỉnh thành từ collection provinces trong DB của bạn
+    const provincesList = await db.collection('provinces').find({}).toArray();
+    
+    // Chuẩn hóa chuỗi địa chỉ khách nhập thành chữ thường không dấu
+    const cleanShippingAddress = removeVietnameseTones(shippingAddress);
+
+    for (const prov of provincesList) {
+      const cleanProvName = removeVietnameseTones(prov.name); // Ví dụ: "Thanh Hóa" -> "thanh hoa"
+      
+      // Kiểm tra xem trong chuỗi khách gõ có chứa tên tỉnh thành đó không
+      if (cleanShippingAddress.includes(cleanProvName)) {
+        matchedProvinceName = prov.name; // Gán lại tên tỉnh chuẩn có dấu (Ví dụ: "Thanh Hóa")
+        break; // Tìm thấy thì dừng vòng lặp luôn
+      }
+    }
+    // ----------------------------------------------------
+
+    // Kiểm tra kho hàng (Giữ nguyên logic cũ của bạn)
     for (const item of items) {
       const product = await Product.findById(item.productId); 
       if (!product || product.stock < item.quantity) return res.status(400).json({ success: false, message: `Sản phẩm không đủ hàng!` });
@@ -744,7 +776,13 @@ app.post('/api/orders',authMiddleware, async (req, res) => {
     }
 
     const newOrder = new Order({
-      orderId, userId, customerName, phoneNumber, shippingAddress, paymentMethod,
+      orderId, 
+      userId, 
+      customerName, 
+      phoneNumber, 
+      shippingAddress, // Lưu nguyên văn: "phúc đức, quảng tiến, Sầm sơn, thanh hóa"
+      provinceFilter: matchedProvinceName, // Tự động lưu: "Thanh Hóa" (dùng để lọc và xuất excel sau này)
+      paymentMethod,
       items: items.map(i => ({ productId: i.productId, name: i.name, price: i.price, quantity: i.quantity })),
       totalPrice,
       status: 'Chờ xác nhận'
@@ -765,18 +803,113 @@ app.post('/api/orders',authMiddleware, async (req, res) => {
     }
 
     await newOrder.save();
-     io.to('admin').emit('new_notification', {
-    title: 'Đơn hàng mới! 🛒',
-    message: `Khách hàng ${customerName} vừa đặt đơn hàng ${orderId}.`,
-    type: 'order'
-  });
+    
+    io.to('admin').emit('new_notification', {
+      title: 'Đơn hàng mới! 🛒',
+      message: `Khách hàng ${customerName} vừa đặt đơn hàng ${orderId}.`,
+      type: 'order'
+    });
     await Notification.create({ title: 'Đơn hàng mới! 🛒', message: `Khách hàng ${customerName} vừa đặt đơn hàng ${orderId}.`, type: 'order', meta: { orderId } });
     return res.status(201).json({ success: true, order: newOrder, paymentGateway });
   } catch (error) {
     return res.status(500).json({ success: false, message: "Lỗi hệ thống khi xử lý đơn hàng!" });
   }
 });
+// 1. API CHO ADMIN: LỌC TỔNG HỢP (SỬA LỖI THÀNH PHỐ + THÊM BỘ LỌC NGÀY)
+app.get('/api/admin/orders', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const { search, status, paymentMethod, province, date } = req.query;
+    let query = {};
 
+    if (status) query.status = status;
+    if (paymentMethod) query.paymentMethod = paymentMethod;
+
+    // 🌟 SỬA LỖI THÀNH PHỐ: Quét trực tiếp vào chuỗi shippingAddress gốc, không phân biệt hoa thường
+    if (province) {
+      query.shippingAddress = { $regex: province, $options: 'i' };
+    }
+
+    // 🌟 BỘ LỌC NGÀY THÔNG MINH: Bắt trọn vẹn từ 00:00:00 đến 23:59:59 của ngày chọn
+    if (date) {
+      const startOfDay = new Date(date);
+      startOfDay.setHours(0, 0, 0, 0);
+
+      const endOfDay = new Date(date);
+      endOfDay.setHours(23, 59, 59, 999);
+
+      query.createdAt = { $gte: startOfDay, $lte: endOfDay };
+    }
+
+    if (search) {
+      query.$or = [
+        { orderId: { $regex: search, $options: 'i' } },
+        { customerName: { $regex: search, $options: 'i' } }
+      ];
+    }
+
+    const orders = await Order.find(query).sort({ createdAt: -1 });
+    res.json(orders);
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Lỗi hệ thống khi tải đơn hàng" });
+  }
+});
+
+// 2. API CHO USER: ĐỒNG BỘ 100% BỘ LỌC GIỐNG ADMIN
+app.get('/api/customer/orders', authMiddleware, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { search, status, paymentMethod, province, date } = req.query;
+    
+    let query = { userId }; // Ép điều kiện bảo mật của User
+
+    if (status) query.status = status;
+    if (paymentMethod) query.paymentMethod = paymentMethod;
+
+    // Sửa lỗi lọc thành phố cho User giống Admin
+    if (province) {
+      query.shippingAddress = { $regex: province, $options: 'i' };
+    }
+
+    // Đồng bộ lọc ngày cho User
+    if (date) {
+      const startOfDay = new Date(date);
+      startOfDay.setHours(0, 0, 0, 0);
+
+      const endOfDay = new Date(date);
+      endOfDay.setHours(23, 59, 59, 999);
+
+      query.createdAt = { $gte: startOfDay, $lte: endOfDay };
+    }
+
+    if (search) {
+      query.orderId = { $regex: search, $options: 'i' };
+    }
+
+    const orders = await Order.find(query).sort({ createdAt: -1 });
+    res.json(orders);
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Không thể tải danh sách đơn hàng" });
+  }
+});
+// 1. API lấy danh sách các Trạng thái đơn hàng
+app.get('/api/orders/statuses', authMiddleware, (req, res) => {
+  try {
+    const statuses = Order.schema.path('status').enumValues;
+    res.json({ success: true, data: statuses });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Không thể lấy danh sách trạng thái" });
+  }
+});
+
+// 2. API lấy danh sách các Phương thức thanh toán (Phương thức ví)
+app.get('/api/orders/payment-methods', authMiddleware, (req, res) => {
+  try {
+    const paymentMethods = Order.schema.path('paymentMethod').enumValues;
+    res.json({ success: true, data: paymentMethods });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Không thể lấy danh sách phương thức thanh toán" });
+  }
+});
 // Webhook SePay nhận tín hiệu tự động chuyển khoản (Public)
 app.post('/api/sepay-webhook', async (req, res) => {
   try {

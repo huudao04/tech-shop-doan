@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Tag, Select, Typography, message, Card, Popover } from 'antd';
-import { EyeOutlined } from '@ant-design/icons';
+import { Table, Tag, Select, Typography, message, Card, Popover, Space, Input, DatePicker } from 'antd';
+import { EyeOutlined, SearchOutlined } from '@ant-design/icons';
 import API from '../utils/axiosClient';
 
 const { Title } = Typography;
@@ -9,11 +9,44 @@ const { Option } = Select;
 const AdminOrders = () => {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [statuses, setStatuses] = useState([]);
+  const [paymentMethods, setPaymentMethods] = useState([]);
+
+  const [filters, setFilters] = useState({
+    search: '',
+    status: undefined,
+    paymentMethod: undefined,
+    province: undefined,
+    date: undefined
+  }); 
+
+  const fetchFilterData = async () => {
+    try {
+      // Gọi đồng thời cả 2 API tách biệt
+      const [statusRes, paymentRes] = await Promise.all([
+        API.get('/api/orders/statuses'),
+        API.get('/api/orders/payment-methods')
+      ]);
+
+      if (statusRes.data.success) setStatuses(statusRes.data.data);
+      if (paymentRes.data.success) setPaymentMethods(paymentRes.data.data);
+    } catch (error) {
+      console.error("Lỗi khi tải dữ liệu cấu hình bộ lọc:", error);
+    }
+  };
 
   const fetchOrders = async () => {
     try {
       setLoading(true);
-      const res = await API.get('/api/admin/orders');
+      
+      const params = {};
+      if (filters.search) params.search = filters.search;
+      if (filters.status) params.status = filters.status;
+      if (filters.paymentMethod) params.paymentMethod = filters.paymentMethod;
+      if (filters.province) params.province = filters.province;
+      if (filters.date) params.date = filters.date;
+
+      const res = await API.get('/api/admin/orders', { params });
       setOrders(res.data);
     } catch (error) {
       message.error('Không thể tải danh sách đơn hàng');
@@ -23,8 +56,12 @@ const AdminOrders = () => {
   };
 
   useEffect(() => {
-    fetchOrders();
+    fetchFilterData();
   }, []);
+
+  useEffect(() => {
+    fetchOrders();
+  }, [filters]);
 
   // Xử lý đổi trạng thái đơn hàng (Đồng bộ qua API PUT tiếng Việt của admin)
   const handleStatusChange = async (orderId, newStatus) => {
@@ -105,7 +142,6 @@ const AdminOrders = () => {
       title: 'Thanh toán',
       key: 'paymentDisplay',
       render: (_, record) => {
-        // Kiểm tra phương thức thanh toán
         if (record.paymentMethod === 'COD') {
           return (
             <div>
@@ -114,7 +150,6 @@ const AdminOrders = () => {
           );
         }
 
-        // Nếu là phương thức Chuyển khoản QR (BANK_TRANSFER)
         const isPaid = record.paymentStatus === 'PAID' || record.paymentStatus === 'Đã thanh toán';
         const isFailed = record.paymentStatus === 'FAILED' || record.paymentStatus === 'Thanh toán thất bại';
 
@@ -176,16 +211,68 @@ const AdminOrders = () => {
         <Title level={3}>Quản lý và Duyệt đơn hàng</Title>
       </div>
 
+      {/* 🌟 THANH TÌM KIẾM & BỘ LỌC ĐA NĂNG CHO ADMIN */}
+      <Card size="small" style={{ marginBottom: 16, backgroundColor: '#f9f9f9', borderRadius: 8 }}>
+        <Space direction="horizontal" wrap size="middle" style={{ width: '100%' }}>
+          
+          <Input.Search
+            placeholder="Tìm theo mã đơn, tên khách..."
+            allowClear
+            enterButton={<SearchOutlined />}
+            style={{ width: 260 }}
+            onSearch={(value) => setFilters(prev => ({ ...prev, search: value }))}
+          />
+
+          <DatePicker 
+            placeholder="Chọn ngày đặt hàng"
+            style={{ width: 170 }}
+            onChange={(date, dateString) => setFilters(prev => ({ ...prev, date: dateString || undefined }))} 
+          />
+
+           <Input 
+            placeholder="Gõ nhanh Tỉnh/Thành lọc..." 
+            allowClear
+            style={{ width: 180 }}
+            onChange={(e) => setFilters(prev => ({ ...prev, province: e.target.value }))}
+          />
+          
+          <Select
+            placeholder="Phương thức thanh toán"
+            style={{ width: 180 }}
+            allowClear
+            onChange={(value) => setFilters(prev => ({ ...prev, paymentMethod: value }))}
+          >
+            {/* 🌟 Map dữ liệu từ mảng paymentMethods riêng biệt */}
+            {paymentMethods.map(method => (
+              <Option key={method} value={method}>
+                {method === 'COD' ? 'Tiền mặt (COD)' : 'Chuyển khoản (BANK)'}
+              </Option>
+            ))}
+          </Select>
+
+          <Select
+            placeholder="Lọc theo trạng thái"
+            style={{ width: 160 }}
+            allowClear
+            onChange={(value) => setFilters(prev => ({ ...prev, status: value }))}
+          >
+            {/* 🌟 Map dữ liệu từ mảng statuses riêng biệt */}
+            {statuses.map(status => (
+              <Option key={status} value={status}>{status}</Option>
+            ))}
+          </Select>
+          
+        </Space>
+      </Card>
+
       <Table 
         dataSource={orders} 
         columns={columns} 
-        rowKey="_id" 
+        rowKey="_id"
         loading={loading}
-        pagination={{ pageSize: 10 }}
-        className="shadow-sm border border-gray-100 rounded-lg overflow-hidden"
       />
     </div>
   );
-};
+}
 
 export default AdminOrders;
