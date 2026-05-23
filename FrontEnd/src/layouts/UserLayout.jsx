@@ -1,6 +1,13 @@
 import { useState, useEffect } from 'react'; 
-import { Layout, Menu, Input, Badge, Dropdown, Avatar, notification, Space, AutoComplete } from 'antd';
-import { ProfileOutlined, ShoppingOutlined, SettingOutlined, LogoutOutlined, ShoppingCartOutlined, UserOutlined, SearchOutlined } from '@ant-design/icons';
+import { 
+  Layout, Menu, Input, Badge, Dropdown, Avatar, notification, 
+  Space, AutoComplete, Row, Col, List
+} from 'antd';
+import { 
+  ProfileOutlined, ShoppingOutlined, SettingOutlined, LogoutOutlined, 
+  ShoppingCartOutlined, UserOutlined, SearchOutlined,
+  FacebookOutlined, YoutubeOutlined, InstagramOutlined, GlobalOutlined
+} from '@ant-design/icons';
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
 import ChatAI from '../components/ChatBotAI.jsx';
 import NotificationBell from '../components/NotificationBell.jsx';
@@ -22,6 +29,26 @@ const UserLayout = () => {
   // Đọc thông tin người dùng từ localStorage
   const token = localStorage.getItem('token');
   const user = JSON.parse(localStorage.getItem('user') || '{}');
+
+  const policyData = [
+    { text: 'Chính sách bảo hành', link: '/policy/warranty' },
+    { text: 'Chính sách đổi trả 1-1', link: '/policy/return' },
+    { text: 'Chính sách giao hàng tận nơi', link: '/policy/shipping' },
+    { text: 'Bảo mật thông tin khách hàng', link: '/policy/privacy' },
+  ];
+
+  const serviceData = [
+    { text: 'Dịch vụ sửa chữa phần cứng', link: '/services/repair' },
+    { text: 'Trả góp ưu đãi 0%', link: '/services/installment' },
+    { text: 'Tin tức công nghệ mới nhất', link: '/news' },
+    { text: 'Liên hệ hợp tác kinh doanh', link: '/contact' },
+  ];
+
+  const supportData = [
+    { text: 'Hotline: 1900 1234', link: '/support/how-to-buy' },
+    { text: 'Email: support@techshop.com', link: '/support/faq' },
+    { text: 'Địa chỉ: 123 Đường ABC, Quận XYZ, TP.Thái Nguyên', link: '/support/technical' },
+  ]; 
 
   const getSelectedMenuKey = () => {
     const path = location.pathname;
@@ -289,7 +316,80 @@ const UserLayout = () => {
         </div>
       </Content>
 
-      <Footer style={{ textAlign: 'center' }}>Đồ án Tốt nghiệp ©2026 - Nguyễn Hữu Đạo</Footer>
+      <Footer style={{ background: '#141414', color: 'rgba(255, 255, 255, 0.65)', padding: '50px 50px 20px 50px', fontSize: '14px' }}>
+        <Row gutter={[32, 32]} justify="space-between">
+          
+          {/* Cột 1: Giới thiệu về Website (Giữ nguyên) */}
+          <Col xs={24} sm={12} md={6}>
+            <div style={{ fontWeight: 'bold', fontSize: '18px', color: '#fff', marginBottom: '16px' }}>TECH-SHOP</div>
+            <p style={{ color: '#a6a6a6', lineHeight: '1.6' }}>
+              TECH-SHOP là hệ thống bán lẻ thiết bị công nghệ chính hãng hàng đầu, cung cấp các sản phẩm điện thoại, máy tính và phụ kiện cao cấp với mức giá cạnh tranh nhất.
+            </p>
+            <p style={{ color: '#a6a6a6' }}><strong>Địa chỉ:</strong> Ngõ 167, đường Z115, xã Quyết Thắng, TP. Thái Nguyên</p>
+          </Col>
+
+          {/* Cột 2: Chính sách mua hàng (ĐÃ ĐỔI SANG LIST ANTD) */}
+          <Col xs={24} sm={12} md={6}>
+            <div style={{ fontWeight: 'bold', fontSize: '16px', color: '#fff', marginBottom: '16px' }}>Chính sách</div>
+            <List
+              split={false} // Ẩn đường kẻ gạch ngang giữa các item
+              dataSource={policyData}
+              renderItem={(item) => (
+                <List.Item style={{ padding: '6px 0', border: 'none' }}>
+                  <Link to={item.link} style={{ color: '#a6a6a6', transition: 'color 0.3s' }}>
+                    {item.text}
+                  </Link>
+                </List.Item>
+              )}
+            />
+          </Col>
+
+          {/* Cột 3: Dịch vụ và Thông tin khác (ĐÃ ĐỔI SANG LIST ANTD) */}
+          <Col xs={24} sm={12} md={6}>
+            <div style={{ fontWeight: 'bold', fontSize: '16px', color: '#fff', marginBottom: '16px' }}>Dịch vụ & Thông tin</div>
+            <List
+              split={false} // Ẩn đường kẻ gạch ngang giữa các item
+              dataSource={serviceData}
+              renderItem={(item) => (
+                <List.Item style={{ padding: '6px 0', border: 'none' }}>
+                  <Link to={item.link} style={{ color: '#a6a6a6', transition: 'color 0.3s' }}>
+                    {item.text}
+                  </Link>
+                </List.Item>
+              )}
+            />
+          </Col>
+
+          {/* Cột 4: Kết nối & Liên kết (Giữ nguyên) */}
+          <Col xs={24} sm={12} md={6}>
+            <div style={{ fontWeight: 'bold', fontSize: '16px', color: '#fff', marginBottom: '16px' }}>Kết nối với chúng tôi</div>
+            <Space size="middle" style={{ marginBottom: '20px' }}>
+              <a href="https://facebook.com" target="_blank" rel="noreferrer" style={{ color: '#1890ff', fontSize: '24px' }}><FacebookOutlined /></a>
+              <a href="https://youtube.com" target="_blank" rel="noreferrer" style={{ color: '#ff4d4f', fontSize: '24px' }}><YoutubeOutlined /></a>
+              <a href="https://instagram.com" target="_blank" rel="noreferrer" style={{ color: '#ff4d4f', fontSize: '24px' }}><InstagramOutlined /></a>
+              <a href="#" style={{ color: '#52c41a', fontSize: '24px' }}><GlobalOutlined /></a>
+            </Space>
+            <List
+              split={false}
+              dataSource={supportData}
+              renderItem={(item) => (
+                <List.Item style={{ padding: '6px 0', border: 'none' }}>
+                  <Link to={item.link} style={{ color: '#a6a6a6', transition: 'color 0.3s' }}>
+                    {item.text}
+                  </Link>
+                </List.Item>
+              )}
+            />
+          </Col>
+
+        </Row>
+
+        <hr style={{ border: 'none', borderTop: '1px solid #262626', margin: '40px 0 20px 0' }} />
+
+        <div style={{ textAlign: 'center', color: '#595959', fontSize: '13px' }}>
+          Đồ án Tốt nghiệp ©2026 - Nguyễn Hữu Đạo. All rights reserved.
+        </div>
+      </Footer>
     </Layout>
   );
 };

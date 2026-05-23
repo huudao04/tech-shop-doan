@@ -155,8 +155,8 @@ const UserOrders = () => {
         }
 
         // Nếu chọn Chuyển khoản QR
-        const isPaid = record.paymentStatus === 'PAID' || record.paymentStatus === 'Đã thanh toán';
-        const isFailed = record.paymentStatus === 'FAILED' || record.paymentStatus === 'Thanh toán thất bại';
+        const isPaid = record.paymentStatus === 'Đã thanh toán';
+        const isFailed = record.paymentStatus === 'Thanh toán thất bại';
 
         let color = 'gold';
         let statusText = 'Chờ thanh toán';

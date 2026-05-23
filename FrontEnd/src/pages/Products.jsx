@@ -24,39 +24,43 @@ const Products = () => {
   const [priceRange, setPriceRange] = useState([0, 50000000]);
   const [debouncedPriceRange, setDebouncedPriceRange] = useState([0, 50000000]);
 
-  // Bên trong component Products:
   const location = useLocation();
   const queryParams = new URLSearchParams(location.search);
   const searchParam = queryParams.get('search') || '';
-  
-    useEffect(() => {
-    const fetchProducts = async () => {
-      try {
-        setLoading(true);
-        // Truyền tham số search lấy từ URL vào API backend
-        const response = await API.get(`/api/products?search=${encodeURIComponent(searchParam)}`);
-        setProducts(response.data);
-      } catch (error) {
-        message.error("Không thể tải danh sách sản phẩm");
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchProducts();
-  }, [searchParam]);
-  // ==========================================
-  // 1. GỌI API RIÊNG BIỆT ĐỂ LẤY CỐ ĐỊNH DANH SÁCH BRAND & CATEGORY (CHẠY 1 LẦN)
-  // ==========================================
+
+  // ========================================================
+  // 1. LẮNG NGHE URL ĐỂ ĐỒNG BỘ TRẠNG THÁI CHECKBOX TỪ TRANG CHỦ SANG
+  // ========================================================
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const categoryParam = params.get('category');
+    const brandParam = params.get('brand');
+
+    if (categoryParam) {
+      setSelectedCategories([categoryParam]); // Tích chọn ô danh mục trùng với text trên URL
+    } else {
+      setSelectedCategories([]);
+    }
+
+    if (brandParam) {
+      setSelectedBrands([brandParam]); // Tích chọn ô thương hiệu trùng với text trên URL
+    } else {
+      setSelectedBrands([]);
+    }
+  }, [location.search]); // Chạy lại khi chuyển trang hoặc URL thay đổi
+
+
+  // ========================================================
+  // 2. GỌI API ĐỂ LẤY CỐ ĐỊNH DANH SÁCH CHECKBOX (CHẠY 1 LẦN KHI MOUNT)
+  // ========================================================
   useEffect(() => {
     const fetchFilterData = async () => {
       try {
-        // Gọi đồng thời cả 2 API để tối ưu tốc độ load trang
         const [brandRes, catRes] = await Promise.all([
           API.get('/api/brands'),
           API.get('/api/categories')
         ]);
         
-        // Vì backend trả về mảng object chứa { name, slug } nên ta map lấy trường name
         setBrandsList(brandRes.data.map(b => b.name));
         setCategoriesList(catRes.data.map(c => c.name));
       } catch (error) {
@@ -64,9 +68,10 @@ const Products = () => {
       }
     };
     fetchFilterData();
-  }, []); // [] Đảm bảo danh sách checkbox đứng im, không bị thay đổi khi bấm lọc
+  }, []); 
 
-  // 2. Debounce khoảng giá (Đợi ngưng kéo slider 400ms mới kích hoạt gọi API)
+
+  // 3. Debounce khoảng giá (Đợi ngưng kéo slider 400ms)
   useEffect(() => {
     const handler = setTimeout(() => {
       setDebouncedPriceRange(priceRange);
@@ -74,29 +79,34 @@ const Products = () => {
     return () => clearTimeout(handler);
   }, [priceRange]);
 
-  // ==========================================
-  // 3. GỌI API /api/products KÈM PARAMS ĐỂ LỌC SẢN PHẨM KHHI STATE THAY ĐỔI
-  // ==========================================
+
+  // ========================================================
+  // 4. EFFECT DUY NHẤT CHỊU TRÁCH NHIỆM GỌI API /api/products ĐỂ LỌC DỮ LIỆU
+  // ========================================================
   useEffect(() => {
     const fetchFilteredProducts = async () => {
       setLoading(true);
       try {
         const params = {};
 
-        // Nếu backend xử lý dạng chuỗi, map mảng thành chuỗi phân tách bằng dấu phẩy
-        // Hoặc truyền trực tiếp nếu backend của bạn nhận mảng hoặc chuỗi đơn
-        if (selectedBrands.length > 0) {
-          params.brand = selectedBrands.join(',');
+        // Nếu đang có từ khóa tìm kiếm trên thanh URL, đính kèm vào API lọc luôn
+        if (searchParam) {
+          params.search = searchParam;
         }
+
+        // Lọc theo mảng danh mục / thương hiệu (Dạng chuỗi nối bằng dấu phẩy giống backend của bạn nhận)
         if (selectedCategories.length > 0) {
           params.category = selectedCategories.join(',');
         }
+        if (selectedBrands.length > 0) {
+          params.brand = selectedBrands.join(',');
+        }
 
-        // Thêm khoảng giá Min - Max đúng tên params backend cần nhận
+        // Lọc theo khoảng giá
         if (debouncedPriceRange[0] > 0) params.minPrice = debouncedPriceRange[0];
         if (debouncedPriceRange[1] < 50000000) params.maxPrice = debouncedPriceRange[1];
 
-        // Gửi request lên API kèm theo query params lọc sản phẩm
+        // Thực hiện 1 request duy nhất gom đủ mọi điều kiện lọc bằng API
         const response = await API.get('/api/products', { params });
         setProducts(response.data);
       } catch (error) {
@@ -108,9 +118,11 @@ const Products = () => {
     };
 
     fetchFilteredProducts();
-  }, [selectedBrands, selectedCategories, debouncedPriceRange]);
+  }, [selectedBrands, selectedCategories, debouncedPriceRange, searchParam]); 
+  // Chạy lại khi bất kỳ bộ lọc nào thay đổi, bao gồm cả khi thanh URL nhận param từ trang chủ
 
-  // 4. Hàm xử lý thêm vào giỏ hàng nhanh
+
+  // 5. Hàm xử lý thêm vào giỏ hàng nhanh
   const handleAddToCart = (product) => {
     const existingItem = cartItems.find(item => item.id === product._id);
     let newCart;

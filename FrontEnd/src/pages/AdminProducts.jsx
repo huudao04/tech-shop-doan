@@ -75,68 +75,68 @@ const AdminProducts = () => {
     form.setFieldsValue(record); 
     
     // Kiểm tra nếu sản phẩm có mảng ảnh
-  if (record.image && Array.isArray(record.image)) {
-    const formattedFiles = record.image.map((imgName, index) => ({
-      uid: index.toString(),
-      name: imgName,
-      status: 'done',
-      url: imgName.startsWith('http') ? imgName : `/images/${imgName}`,
-      response: { fileName: imgName } // Lưu lại tên file để nhận diện khi submit
-    }));
-    setFileList(formattedFiles);
-  } else {
-    setFileList([]);
-  }
-  setIsModalOpen(true);
-};
+    if (record.image && Array.isArray(record.image)) {
+      const formattedFiles = record.image.map((imgName, index) => ({
+        uid: index.toString(),
+        name: imgName,
+        status: 'done',
+        url: imgName.startsWith('http') ? imgName : `/images/${imgName}`,
+        response: { fileName: imgName } // Lưu lại tên file để nhận diện khi submit
+      }));
+      setFileList(formattedFiles);
+    } else {
+      setFileList([]);
+    }
+    setIsModalOpen(true);
+  };
 
   const onFinish = async (values) => {
-  try {
-    let finalImageArray = [];
-    const formData = new FormData();
-    let hasNewFiles = false;
+    try {
+      let finalImageArray = [];
+      const formData = new FormData();
+      let hasNewFiles = false;
 
-    // Duyệt qua danh sách file đang có trên giao diện Form
-    fileList.forEach(file => {
-      if (file.originFileObj) {
-        // Nếu là file mới chọn từ máy tính, nhét vào formData để chuẩn bị gửi lên API
-        formData.append('imageFiles', file.originFileObj);
-        hasNewFiles = true;
-      } else if (file.response && file.response.fileName) {
-        // Nếu là ảnh cũ đã nằm trên server từ trước, giữ lại tên file
-        finalImageArray.push(file.response.fileName);
-      } else if (file.name) {
-        finalImageArray.push(file.name);
-      }
-    });
-
-    // 1. Nếu có file ảnh mới, tiến hành gọi API upload
-    if (hasNewFiles) {
-      const uploadRes = await API.post('/api/upload', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
+      // Duyệt qua danh sách file đang có trên giao diện Form
+      fileList.forEach(file => {
+        if (file.originFileObj) {
+          // Nếu là file mới chọn từ máy tính, nhét vào formData để chuẩn bị gửi lên API
+          formData.append('imageFiles', file.originFileObj);
+          hasNewFiles = true;
+        } else if (file.response && file.response.fileName) {
+          // Nếu là ảnh cũ đã nằm trên server từ trước, giữ lại tên file
+          finalImageArray.push(file.response.fileName);
+        } else if (file.name) {
+          finalImageArray.push(file.name);
+        }
       });
-      // Gộp các tên file mới được trả về vào mảng chung
-      finalImageArray = [...finalImageArray, ...uploadRes.data.fileNames];
-    }
 
-    // Đóng gói mảng tên file ảnh vào đối tượng gửi đi lưu trữ
-    const productData = { ...values, image: finalImageArray };
+      // 1. Nếu có file ảnh mới, tiến hành gọi API upload
+      if (hasNewFiles) {
+        const uploadRes = await API.post('/api/upload', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
+        // Gộp các tên file mới được trả về vào mảng chung
+        finalImageArray = [...finalImageArray, ...uploadRes.data.fileNames];
+      }
 
-    if (editingProduct) {
-      await API.put(`/api/products/${editingProduct._id}`, productData);
-      message.success('Cập nhật sản phẩm thành công!');
-    } else {
-      await API.post('/api/products', productData);
-      message.success('Thêm sản phẩm thành công!');
+      // Đóng gói mảng tên file ảnh vào đối tượng gửi đi lưu trữ
+      const productData = { ...values, image: finalImageArray };
+
+      if (editingProduct) {
+        await API.put(`/api/products/${editingProduct._id}`, productData);
+        message.success('Cập nhật sản phẩm thành công!');
+      } else {
+        await API.post('/api/products', productData);
+        message.success('Thêm sản phẩm thành công!');
+      }
+      setIsModalOpen(false);
+      form.resetFields();
+      setFileList([]);
+      fetchProducts(); 
+    } catch (error) {
+      message.error('Có lỗi xảy ra khi xử lý thông tin sản phẩm');
     }
-    setIsModalOpen(false);
-    form.resetFields();
-    setFileList([]);
-    fetchProducts(); 
-  } catch (error) {
-    message.error('Có lỗi xảy ra khi xử lý thông tin sản phẩm');
-  }
-};
+  };
 
   const handleDelete = async (id) => {
     try {
@@ -153,16 +153,15 @@ const AdminProducts = () => {
       title: 'Tên sản phẩm',
       width: 300,
       render: (_, record) => {
-        // Lấy ảnh đầu tiên trong mảng làm ảnh đại diện, nếu không có mảng thì check chuỗi cũ
         const mainImage = Array.isArray(record.image) ? record.image[0] : record.image;
         return (
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <img 
-                src={mainImage?.startsWith('http') ? mainImage : `/images/${mainImage}`}  
-                style={{ maxHeight: '40px', maxWidth: '40px', objectFit: 'contain' }}  
-                alt={record.name}
-              />
-            <span className="font-semibold text-gray-800">{record.name}</span> 
+            <img 
+              src={mainImage?.startsWith('http') ? mainImage : `/images/${mainImage}`}  
+              style={{ maxHeight: '40px', maxWidth: '40px', objectFit: 'contain' }}  
+              alt={record.name}
+            />
+            <span style={{ fontWeight: 600, color: '#333' }}>{record.name}</span> 
           </div>
         );
       }
@@ -179,26 +178,37 @@ const AdminProducts = () => {
         <Space size="middle">
           <Button type="primary" ghost icon={<EditOutlined />} onClick={() => handleEditClick(record)}>Sửa</Button>
           <Popconfirm
-          title="Xóa sản phẩm"
-          description={`Bạn có chắc chắn muốn xóa sản phẩm "${record.name}" không?`}
-          onConfirm={() => handleDelete(record._id)} // Nếu ấn Xác nhận thì gọi hàm xóa
-          okText="Xóa"
-          cancelText="Hủy"
-          okButtonProps={{ danger: true }} // Đổi màu nút Xác nhận thành đỏ cho hợp ngữ cảnh xóa
-        >
-          <Button danger icon={<DeleteOutlined />}>Xóa</Button>
-        </Popconfirm>
+            title="Xóa sản phẩm"
+            description={`Bạn có chắc chắn muốn xóa sản phẩm "${record.name}" không?`}
+            onConfirm={() => handleDelete(record._id)}
+            okText="Xóa"
+            cancelText="Hủy"
+            okButtonProps={{ danger: true }}
+          >
+            <Button danger icon={<DeleteOutlined />}>Xóa</Button>
+          </Popconfirm>
         </Space>
       ) 
     },
   ];
 
   return (
-    <div className="p-4">
-      {/* Tiêu đề & Nút Thêm giữ nguyên */}
-      
-      {/* 🌟 3. THANH CÔNG CỤ BỘ LỌC ĐẦY ĐỦ CHO ADMIN */}
-      <Card className="mb-4 shadow-sm" bodyStyle={{ padding: '12px 16px' }}>
+    <div style={{ padding: '24px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+        <Title level={2} style={{ margin: 0 }}>Quản Lý Hệ Thống Sản Phẩm</Title>
+         <Button 
+          type="primary" 
+          icon={<PlusOutlined />} 
+          size="middle"
+          onClick={handleAddClick}
+        >
+          Thêm sản phẩm mới
+        </Button>
+      </div>
+     
+     
+      {/* 🌟 BỘ LỌC ĐẦY ĐỦ CHO ADMIN */}
+      <Card style={{ marginBottom: '20px', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }} bodyStyle={{ padding: '12px 16px' }}>
         <Space direction="horizontal" wrap size="small">
           <Input.Search
             placeholder="Tìm tên sản phẩm..."
@@ -230,7 +240,6 @@ const AdminProducts = () => {
             ))}
           </Select>
 
-          {/* 🌟 Ô Ô NHẬP KHOẢNG GIÁ ĐỘNG */}
           <InputNumber
             placeholder="Giá tối thiểu"
             style={{ width: 140 }}
@@ -255,6 +264,7 @@ const AdminProducts = () => {
 
       <Table dataSource={products} columns={columns} rowKey="_id" />
 
+      {/* Modal Form giữ nguyên */}
       <Modal 
         title={editingProduct ? "Chỉnh sửa thông tin sản phẩm" : "Thêm sản phẩm mới"} 
         open={isModalOpen} 
@@ -290,14 +300,13 @@ const AdminProducts = () => {
             </Select>
           </Form.Item>
 
-          {/* KHUNG CHỌN FILE ẢNH TRỰC QUAN TỪ MÁY TÍNH ADMIN */}
-         <Form.Item label="Hình ảnh sản phẩm (Có thể chọn nhiều ảnh)">
+          <Form.Item label="Hình ảnh sản phẩm (Có thể chọn nhiều ảnh)">
             <Upload
               listType="picture-card"
               fileList={fileList}
               onChange={({ fileList: newFileList }) => setFileList(newFileList)}
-              beforeUpload={() => false} // Ngăn tự động gửi file, đợi ấn nút Save Form
-              multiple={true} // Bật tính năng cho phép chọn nhiều file cùng lúc khi mở cửa sổ máy tính
+              beforeUpload={() => false}
+              multiple={true}
             >
               {fileList.length < 8 && (
                 <div>

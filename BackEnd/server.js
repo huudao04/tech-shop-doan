@@ -91,8 +91,10 @@ const productSchema = new mongoose.Schema({
   brand: { type: String },
   stock: { type: Number, default: 0 },
   image: { type: [String], default: [] },
-  createdAt: { type: Date, default: Date.now }
-});
+  createdAt: { type: Date, default: Date.now },
+  sold: { type: Number, default: 0 }
+},{ timestamps: true });
+
 const Product = mongoose.model('Product', productSchema);
 
 // Schema Danh mục
@@ -447,40 +449,45 @@ app.post('/api/auth/reset-password', async (req, res) => {
 // API lấy danh sách sản phẩm (Tích hợp thêm bộ lọc khoảng giá Min - Max)
 app.get('/api/products', async (req, res) => {
   try {
-    const { search, category, brand, minPrice, maxPrice } = req.query;
+    const { search, category, brand, minPrice, maxPrice, sort, limit } = req.query;
     let query = {};
 
-    // 1. Lọc theo tên sản phẩm
-    if (search) {
-      query.name = { $regex: search, $options: 'i' };
-    }
-
-    // 2. Lọc theo Danh mục
+    if (search) query.name = { $regex: search, $options: 'i' };
+    
     if (category) {
-      query.category = { $in: category.split(',') };
+      const catArray = category.split(',');
+      query.category = { $in: catArray };
     }
-
-    // 3. Lọc theo Thương hiệu
     if (brand) {
-      query.brand = { $in: brand.split(',') };
+      const brandArray = brand.split(',');
+      query.brand = { $in: brandArray };
     }
 
-    // 4. Lọc theo khoảng giá (Ép kiểu sang dạng số nguyên thực tế)
     if (minPrice || maxPrice) {
       query.price = {};
-      if (minPrice) {
-        query.price.$gte = parseInt(minPrice);
-      }
-      if (maxPrice) {
-        query.price.$lte = parseInt(maxPrice);
-      }
+      if (minPrice) query.price.$gte = Number(minPrice);
+      if (maxPrice) query.price.$lte = Number(maxPrice);
     }
 
-    // Truy vấn database và sắp xếp sản phẩm mới nhất lên đầu
-    const products = await Product.find(query).sort({ createdAt: -1 });
+    // --- LOGIC XỬ LÝ SẮP XẾP VÀ LIMIT MỚI ---
+    let mongooseQuery = Product.find(query);
+
+   if (sort === 'sold') {
+      mongooseQuery = mongooseQuery.sort({ sold: -1 }); // Sắp xếp bán chạy nhất
+    } else if (sort === 'newest') {
+      mongooseQuery = mongooseQuery.sort({ createdAt: -1 }); // Sắp xếp mới nhất
+    } else {
+      mongooseQuery = mongooseQuery.sort({ createdAt: -1 }); // Mặc định
+    }
+
+    if (limit) {
+      mongooseQuery = mongooseQuery.limit(Number(limit)); // Giới hạn số lượng (ví dụ chỉ lấy 4 sản phẩm)
+    }
+
+    const products = await mongooseQuery;
     res.json(products);
   } catch (error) {
-    res.status(500).json({ success: false, message: 'Không thể tải danh sách sản phẩm' });
+    res.status(500).json({ message: 'Lỗi khi lấy danh sách sản phẩm', error });
   }
 });
 app.get('/api/products/search-suggest', async (req, res) => {
@@ -863,7 +870,6 @@ app.post('/api/orders', authMiddleware, async (req, res) => {
         break; // Tìm thấy thì dừng vòng lặp luôn
       }
     }
-    // ----------------------------------------------------
 
     // Kiểm tra kho hàng (Giữ nguyên logic cũ của bạn)
     for (const item of items) {
@@ -904,13 +910,44 @@ app.post('/api/orders', authMiddleware, async (req, res) => {
     }
 
     await newOrder.save();
-    
+
+    // Nếu frontend gửi cờ isPaid=true (ví dụ khi người dùng bấm "Thanh toán" thủ công),
+    // thì cập nhật trạng thái thanh toán và tăng trường `sold` của sản phẩm tương ứng.
+    const markOrderAsPaid = async (orderDoc) => {
+      if (!orderDoc) return;
+      if (orderDoc.paymentStatus === 'Đã thanh toán') return;
+      // Cập nhật sold cho từng sản phẩm
+      for (const item of orderDoc.items) {
+        await Product.findByIdAndUpdate(item.productId, { $inc: { sold: item.quantity } });
+      }
+      orderDoc.paymentStatus = 'Đã thanh toán';
+      // Giữ nguyên status hiện tại (Chờ xác nhận) — admin sẽ xử lý tiếp
+      await orderDoc.save();
+
+      // Thông báo realtime và lưu Notification
+      io.to('admin').emit('new_notification', {
+        title: 'Thanh toán thành công ✅',
+        message: `Đơn hàng ${orderDoc.orderId} đã được thanh toán tự động/thuận tiện.`,
+        type: 'order_paid'
+      });
+      await Notification.create({ title: 'Thanh toán thành công ✅', message: `Đơn hàng ${orderDoc.orderId} đã được thanh toán.`, type: 'order_paid', meta: { orderId: orderDoc.orderId } });
+      await Notification.create({ userId: orderDoc.userId, title: 'Đơn hàng đã thanh toán ✅', message: `Cảm ơn bạn! Đơn hàng ${orderDoc.orderId} đã được ghi nhận thanh toán.`, type: 'order_paid', meta: { orderId: orderDoc.orderId } });
+    };
+
+    // Thông báo đơn mới (luôn gửi admin biết có đơn)
     io.to('admin').emit('new_notification', {
       title: 'Đơn hàng mới! 🛒',
       message: `Khách hàng ${customerName} vừa đặt đơn hàng ${orderId}.`,
       type: 'order'
     });
     await Notification.create({ title: 'Đơn hàng mới! 🛒', message: `Khách hàng ${customerName} vừa đặt đơn hàng ${orderId}.`, type: 'order', meta: { orderId } });
+
+    // Nếu client muốn đánh dấu là đã thanh toán ngay khi tạo đơn
+    if (req.body.isPaid === true || req.body.paymentStatus === 'Đã thanh toán') {
+      await markOrderAsPaid(newOrder);
+      await newOrder.reload?.();
+    }
+
     return res.status(201).json({ success: true, order: newOrder, paymentGateway });
   } catch (error) {
     return res.status(500).json({ success: false, message: "Lỗi hệ thống khi xử lý đơn hàng!" });
@@ -1019,16 +1056,64 @@ app.post('/api/sepay-webhook', async (req, res) => {
 
     const { code, amount } = transaction; 
     const order = await Order.findOne({ orderId: code });
-    if (!order || order.paymentStatus === 'PAID') return res.json({ success: true });
+    if (!order) return res.status(200).json({ success: true });
+
+    // Nếu đã được đánh dấu là đã thanh toán rồi thì thoát
+    if (order.paymentStatus === 'Đã thanh toán') return res.json({ success: true });
 
     if (amount >= order.totalPrice) {
-      order.paymentStatus = 'Chờ thanh toán';
-      order.status = 'Chờ xác nhận'; 
+      // Tăng trường sold cho từng sản phẩm trong đơn
+      for (const item of order.items) {
+        await Product.findByIdAndUpdate(item.productId, { $inc: { sold: item.quantity } });
+      }
+      order.paymentStatus = 'Đã thanh toán';
+      // Giữ status hiện tại (admin có thể chuyển tiếp)
       await order.save();
+
+      io.to('admin').emit('new_notification', {
+        title: 'Thanh toán tự động từ SePay ✅',
+        message: `Đơn hàng ${order.orderId} đã nhận tiền tự động qua SePay.`,
+        type: 'order_paid'
+      });
+      await Notification.create({ title: 'Thanh toán tự động từ SePay ✅', message: `Đơn hàng ${order.orderId} đã nhận tiền tự động qua SePay.`, type: 'order_paid', meta: { orderId: order.orderId } });
+      await Notification.create({ userId: order.userId, title: 'Đơn hàng đã thanh toán ✅', message: `Đơn hàng ${order.orderId} đã nhận tiền từ SePay.`, type: 'order_paid', meta: { orderId: order.orderId } });
     }
     return res.json({ success: true });
   } catch (error) {
     res.status(500).json({ message: "Lỗi xử lý webhook" });
+  }
+});
+
+// Public webhook endpoint theo yêu cầu: /webhook/sepay (SePay gửi về khi chuyển khoản hoàn tất)
+app.post('/webhook/sepay', async (req, res) => {
+  try {
+    const transaction = sepayClient.verifyWebhookToken(req.body);
+    if (!transaction) return res.status(400).json({ message: "Mã bảo mật webhook không hợp lệ" });
+
+    const { code, amount } = transaction;
+    const order = await Order.findOne({ orderId: code });
+    if (!order) return res.status(200).json({ success: true });
+    if (order.paymentStatus === 'Đã thanh toán') return res.json({ success: true });
+
+    if (amount >= order.totalPrice) {
+      for (const item of order.items) {
+        await Product.findByIdAndUpdate(item.productId, { $inc: { sold: item.quantity } });
+      }
+      order.paymentStatus = 'Đã thanh toán';
+      await order.save();
+
+      io.to('admin').emit('new_notification', {
+        title: 'Thanh toán SePay ✅',
+        message: `Đơn hàng ${order.orderId} đã thanh toán qua SePay.`,
+        type: 'order_paid'
+      });
+      await Notification.create({ title: 'Thanh toán SePay ✅', message: `Đơn hàng ${order.orderId} đã thanh toán qua SePay.`, type: 'order_paid', meta: { orderId: order.orderId } });
+      await Notification.create({ userId: order.userId, title: 'Đơn hàng đã thanh toán ✅', message: `Đơn hàng ${order.orderId} đã thanh toán qua SePay.`, type: 'order_paid', meta: { orderId: order.orderId } });
+    }
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Webhook sepay error:', error);
+    res.status(500).json({ message: 'Lỗi xử lý webhook' });
   }
 });
 // =========================================================================
@@ -1051,7 +1136,7 @@ app.patch('/api/customer/orders/:id/cancel', authMiddleware, async (req, res) =>
     }
 
     order.status = 'Hủy đơn hàng';
-    if (order.paymentStatus === 'PENDING') order.paymentStatus = 'FAILED';
+    if (order.paymentStatus === 'Chờ thanh toán') order.paymentStatus = 'Thanh toán thất bại';
     await order.save();
     io.to('admin').emit('new_notification', {
       title: 'Đơn hàng bị hủy ⚠️',
@@ -1113,7 +1198,7 @@ app.put('/api/admin/orders/:id', authMiddleware, adminMiddleware, async (req, re
         await Product.findByIdAndUpdate(item.productId, { $inc: { stock: item.quantity } });
       }
       order.status = 'Hủy đơn hàng';
-      order.paymentStatus = 'FAILED';
+      order.paymentStatus = 'Thanh toán thất bại';
     } else {
       // Các trạng thái tiến trình thông thường do Admin chỉ định (Đang đóng gói, Đang giao)
       order.status = status;
@@ -1183,7 +1268,7 @@ app.get('/api/admin/orders/export-excel', authMiddleware, adminMiddleware, async
       phoneNumber: order.phoneNumber, 
       shippingAddress: order.shippingAddress,
       paymentMethod: order.paymentMethod === 'COD' ? 'Nhận hàng (COD)' : 'Chuyển khoản',
-      paymentStatus: order.paymentStatus === 'PAID' ? 'Đã thanh toán' : (order.paymentStatus === 'FAILED' ? 'Thất bại' : 'Chờ xử lý'),
+      paymentStatus: order.paymentStatus === 'Đã thanh toán' ? 'Đã thanh toán' : (order.paymentStatus === 'Thanh toán thất bại' || order.paymentStatus === 'FAILED' ? 'Thất bại' : 'Chờ xử lý'),
       // Đồng bộ trạng thái Tiếng Việt chuẩn tại đây:
       status: order.status, 
       totalPrice: order.totalPrice, 
