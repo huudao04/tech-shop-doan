@@ -114,7 +114,7 @@ const Checkout = () => {
                 <Radio.Group onChange={(e) => setPaymentMethod(e.target.value)} value={paymentMethod}>
                   <Space direction="vertical">
                     <Radio value="COD">Thanh toán khi nhận hàng (COD)</Radio>
-                    <Radio value="BANK_TRANSFER">Chuyển khoản VietinBank (Cổng tự động SePay)</Radio>
+                    <Radio value="BANK_TRANSFER">Chuyển khoản ngân hàng thanh toán bằng Qr Code</Radio>
                   </Space>
                 </Radio.Group>
               </Form.Item>

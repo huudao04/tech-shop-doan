@@ -33,8 +33,8 @@ const sepayClient = new SePayPgClient({
 const transporter = nodemailer.createTransport({
   service: 'gmail',
   auth: {
-    user: 'YOUR_EMAIL@gmail.com', // Thay bằng Gmail của shop
-    pass: 'YOUR_APP_PASSWORD'     // Thay bằng Mật khẩu ứng dụng 16 ký tự của Gmail
+    user: 'dao23122004@gmail.com', // Thay bằng Gmail của shop
+    pass: 'pdlm mtum dbcu btij'     // Thay bằng Mật khẩu ứng dụng 16 ký tự của Gmail
   }
 });
 // TẠO SERVER HTTP GẮN SOCKET.IO
@@ -585,7 +585,7 @@ app.put('/api/products/:id', authMiddleware, adminMiddleware, upload.array('imag
       updateData.image = req.files.map(file => file.filename);
     }
 
-    const updatedProduct = await Product.findByIdAndUpdate(req.params.id, updateData, { new: true });
+    const updatedProduct = await Product.findByIdAndUpdate(req.params.id, updateData, { returnDocument: 'after' });
     if (!updatedProduct) return res.status(404).json({ success: false, message: "Không tìm thấy sản phẩm" });
     res.json({ success: true, message: "Cập nhật thành công!", product: updatedProduct });
   } catch (error) {
@@ -801,7 +801,7 @@ app.put('/api/admin/reviews/:id', authMiddleware, adminMiddleware, async (req, r
     const updatedReview = await Review.findByIdAndUpdate(
       req.params.id,
       { productId: new mongoose.Types.ObjectId(productId), name, rating: Number(rating), comment },
-      { new: true }
+      { returnDocument: 'after' }
     ).populate('productId', 'name image');
     if (!updatedReview) return res.status(404).json({ success: false, message: "Không tìm thấy đánh giá" });
     res.json({ success: true, message: "Cập nhật thành công!", review: updatedReview });
@@ -814,7 +814,7 @@ app.put('/api/admin/reviews/:id', authMiddleware, adminMiddleware, async (req, r
 app.patch('/api/admin/reviews/:id/reply', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const { reply } = req.body;
-    const updatedReview = await Review.findByIdAndUpdate(req.params.id, { reply }, { new: true }).populate('productId', 'name image');
+    const updatedReview = await Review.findByIdAndUpdate(req.params.id, { reply }, { returnDocument: 'after' }).populate('productId', 'name image');
     res.json({ success: true, message: "Gửi phản hồi thành công!", review: updatedReview });
   } catch (error) {
     res.status(500).json({ success: false, message: "Không thể gửi phản hồi" });
@@ -1232,7 +1232,7 @@ app.get('/api/admin/orders', authMiddleware, adminMiddleware, async (req, res) =
 app.put('/api/admin/orders/:id', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const { status, paymentStatus } = req.body;
-    const updatedOrder = await Order.findByIdAndUpdate(req.params.id, { status, paymentStatus }, { new: true });
+    const updatedOrder = await Order.findByIdAndUpdate(req.params.id, { status, paymentStatus }, { returnDocument: 'after' });
     res.json({ success: true, message: "Cập nhật trạng thái đơn thành công!", order: updatedOrder });
   } catch (error) {
     res.status(500).json({ success: false, message: "Không thể cập nhật đơn hàng" });
@@ -1536,7 +1536,7 @@ app.patch('/api/notifications/:id/read', authMiddleware, async (req, res) => {
       ? { _id: req.params.id, $or: [{ userId: null }, { userId: { $exists: false } }] }
       : { _id: req.params.id, userId: req.user.id };
 
-    const notification = await Notification.findOneAndUpdate(query, { isRead: true }, { new: true });
+    const notification = await Notification.findOneAndUpdate(query, { isRead: true }, { returnDocument: 'after' });
     if (!notification) {
       return res.status(404).json({ success: false, message: 'Không tìm thấy thông báo' });
     }
