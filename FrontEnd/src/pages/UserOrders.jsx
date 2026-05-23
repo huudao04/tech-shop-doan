@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { Table, Tag, Typography, message, Card, Popover, Button, Popconfirm, Space, Input, Select, DatePicker } from 'antd';
 import { EyeOutlined, ClockCircleOutlined, CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons';
+import { useLocation } from 'react-router-dom';
 import API from '../utils/axiosClient'; 
 
 const { Title } = Typography;
 
 const UserOrders = () => {
+  const location = useLocation();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(false);
   const [statuses, setStatuses] = useState([]);
@@ -18,6 +20,15 @@ const UserOrders = () => {
     province: undefined,
     date: undefined
   });
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const search = params.get('search') || '';
+
+    if (search) {
+      setFilters(prev => ({ ...prev, search }));
+    }
+  }, [location.search]);
 
   const fetchFilterData = async () => {
     try {

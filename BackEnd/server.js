@@ -13,6 +13,7 @@ import nodemailer from 'nodemailer';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import { SePayPgClient } from 'sepay-pg-node';
+import { randomUUID } from 'crypto';
 
 const JWT_SECRET = 'TECH_SHOP_SUPER_SECRET_KEY_2026';
 
@@ -158,6 +159,7 @@ const orderSchema = new mongoose.Schema({
   totalPrice: { type: Number, required: true },
   qrCodeUrl: { type: String },
   paymentUrl: { type: String },
+  stockReserved: { type: Boolean, default: false },
   createdAt: { type: Date, default: Date.now }
 });
 const Order = mongoose.model('Order', orderSchema);
@@ -190,6 +192,23 @@ const cartSchema = new mongoose.Schema({
   ]
 }, { timestamps: true });
 const Cart = mongoose.model('Cart', cartSchema);
+
+const chatMessageSchema = new mongoose.Schema({
+  role: { type: String, enum: ['user', 'assistant'], required: true },
+  content: { type: String, required: true },
+  createdAt: { type: Date, default: Date.now }
+});
+
+const chatHistorySchema = new mongoose.Schema({
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  sessionId: { type: String },
+  messages: { type: [chatMessageSchema], default: [] }
+}, { timestamps: true });
+
+chatHistorySchema.index({ userId: 1 }, { sparse: true });
+chatHistorySchema.index({ sessionId: 1 }, { sparse: true });
+
+const ChatHistory = mongoose.model('ChatHistory', chatHistorySchema);
 // ==========================================
 //             3. CẤU HÌNH MIDDLEWARES
 // ==========================================
@@ -238,6 +257,151 @@ const serializeCartItems = (items = []) => items.map((item) => ({
   category: item.category || '',
   quantity: item.quantity || 1
 }));
+
+const getOptionalUserId = (req) => {
+  const token = req.header('Authorization')?.split(' ')[1];
+  if (!token) return null;
+
+  try {
+    const verified = jwt.verify(token, JWT_SECRET);
+    return verified.id || null;
+  } catch (error) {
+    return null;
+  }
+};
+
+const resolveChatIdentity = (req) => {
+  const userId = getOptionalUserId(req);
+  const sessionId = req.body?.sessionId || req.query?.sessionId || null;
+
+  if (userId) {
+    return { userId, sessionId: sessionId || null };
+  }
+
+  return { userId: null, sessionId: sessionId || randomUUID() };
+};
+
+const buildChatHistoryQuery = ({ userId, sessionId }) => {
+  if (userId) return { userId };
+  if (sessionId) return { sessionId };
+  return null;
+};
+
+const buildProductImagePath = (image) => {
+  if (Array.isArray(image)) {
+    const firstImage = image[0] || '';
+    return firstImage ? `/images/${firstImage}` : '';
+  }
+
+  return image ? `/images/${image}` : '';
+};
+
+const extractOrderCodeFromMessage = (message) => {
+  const orderCodeMatch = message.match(/DH\d{6}/i);
+  return orderCodeMatch ? orderCodeMatch[0].toUpperCase() : null;
+};
+
+const isOrderQuestion = (message) => /\b(đơn hàng|don hang|đơn|don|mã đơn|ma don|tra cứu|truy vấn|kiểm tra|kiem tra)\b/i.test(message);
+
+const isProductQuestion = (message) => /\b(sản phẩm|san pham|mặt hàng|mat hang|giới thiệu|gioi thieu|xem chi tiết|chi tiết|chi tiet|mẫu|mau|mua)\b/i.test(message);
+
+const buildBestProductMatches = async (message) => {
+  const normalizedMessage = message.trim();
+  if (!normalizedMessage) return [];
+
+  const escapedQuery = normalizedMessage.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const productNameRegex = new RegExp(escapedQuery, 'i');
+
+  const exactMatches = await Product.find({ name: { $regex: `^${escapedQuery}$`, $options: 'i' } })
+    .select('_id name price stock description category brand image')
+    .limit(3)
+    .lean();
+
+  if (exactMatches.length > 0) {
+    return exactMatches;
+  }
+
+  const keywordMatches = await Product.find({ name: { $regex: productNameRegex } })
+    .select('_id name price stock description category brand image')
+    .limit(3)
+    .lean();
+
+  return keywordMatches;
+};
+
+const buildOrderSummary = (order) => ({
+  _id: order._id?.toString?.() || String(order._id),
+  orderId: order.orderId,
+  status: order.status,
+  paymentStatus: order.paymentStatus,
+  paymentMethod: order.paymentMethod,
+  totalPrice: order.totalPrice,
+  createdAt: order.createdAt,
+  itemCount: Array.isArray(order.items) ? order.items.reduce((sum, item) => sum + (item.quantity || 0), 0) : 0,
+  detailUrl: `/my-orders?search=${encodeURIComponent(order.orderId)}`
+});
+
+const persistChatExchange = async ({ userId, sessionId, userMessage, assistantMessage }) => {
+  const query = buildChatHistoryQuery({ userId, sessionId });
+  if (!query) return null;
+
+  const update = {
+    $setOnInsert: {
+      ...(userId ? { userId } : {}),
+      ...(sessionId ? { sessionId } : {})
+    },
+    $push: {
+      messages: {
+        $each: [
+          { role: 'user', content: userMessage },
+          { role: 'assistant', content: assistantMessage }
+        ]
+      }
+    }
+  };
+
+  return ChatHistory.findOneAndUpdate(query, update, {
+    upsert: true,
+    new: true,
+    setDefaultsOnInsert: true
+  });
+};
+
+const reserveOrderStock = async (order) => {
+  if (!order || order.stockReserved) return false;
+
+  for (const item of order.items) {
+    await Product.findByIdAndUpdate(item.productId, { $inc: { stock: -item.quantity } });
+  }
+
+  order.stockReserved = true;
+  return true;
+};
+
+const releaseOrderStock = async (order) => {
+  if (!order || !order.stockReserved) return false;
+
+  for (const item of order.items) {
+    await Product.findByIdAndUpdate(item.productId, { $inc: { stock: item.quantity } });
+  }
+
+  order.stockReserved = false;
+  return true;
+};
+
+const markOrderAsPaid = async (order) => {
+  if (!order || order.paymentStatus === 'Đã thanh toán') return false;
+
+  await reserveOrderStock(order);
+
+  for (const item of order.items) {
+    await Product.findByIdAndUpdate(item.productId, { $inc: { sold: item.quantity } });
+  }
+
+  order.paymentStatus = 'Đã thanh toán';
+  await order.save();
+  return true;
+};
 
 // Cấu hình lưu trữ ảnh Upload bằng Multer
 const storage = multer.diskStorage({
@@ -961,16 +1125,13 @@ app.post('/api/orders', authMiddleware, async (req, res) => {
       }
     }
 
-    // Kiểm tra kho hàng (Giữ nguyên logic cũ của bạn)
+    // Kiểm tra kho hàng trước khi tạo đơn
     for (const item of items) {
       const product = await Product.findById(item.productId); 
       if (!product || product.stock < item.quantity) return res.status(400).json({ success: false, message: `Sản phẩm không đủ hàng!` });
     }
 
     const orderId = 'DH' + Math.floor(100000 + Math.random() * 900000);
-    for (const item of items) {
-      await Product.findByIdAndUpdate(item.productId, { $inc: { stock: -item.quantity } });
-    }
 
     const newOrder = new Order({
       orderId, 
@@ -984,6 +1145,10 @@ app.post('/api/orders', authMiddleware, async (req, res) => {
       totalPrice,
       status: 'Chờ xác nhận'
     });
+
+    if (paymentMethod !== 'BANK_TRANSFER') {
+      await reserveOrderStock(newOrder);
+    }
 
     let paymentGateway = null;
     if (paymentMethod === 'BANK_TRANSFER') {
@@ -1001,29 +1166,6 @@ app.post('/api/orders', authMiddleware, async (req, res) => {
 
     await newOrder.save();
 
-    // Nếu frontend gửi cờ isPaid=true (ví dụ khi người dùng bấm "Thanh toán" thủ công),
-    // thì cập nhật trạng thái thanh toán và tăng trường `sold` của sản phẩm tương ứng.
-    const markOrderAsPaid = async (orderDoc) => {
-      if (!orderDoc) return;
-      if (orderDoc.paymentStatus === 'Đã thanh toán') return;
-      // Cập nhật sold cho từng sản phẩm
-      for (const item of orderDoc.items) {
-        await Product.findByIdAndUpdate(item.productId, { $inc: { sold: item.quantity } });
-      }
-      orderDoc.paymentStatus = 'Đã thanh toán';
-      // Giữ nguyên status hiện tại (Chờ xác nhận) — admin sẽ xử lý tiếp
-      await orderDoc.save();
-
-      // Thông báo realtime và lưu Notification
-      io.to('admin').emit('new_notification', {
-        title: 'Thanh toán thành công ✅',
-        message: `Đơn hàng ${orderDoc.orderId} đã được thanh toán tự động/thuận tiện.`,
-        type: 'order_paid'
-      });
-      await Notification.create({ title: 'Thanh toán thành công ✅', message: `Đơn hàng ${orderDoc.orderId} đã được thanh toán.`, type: 'order_paid', meta: { orderId: orderDoc.orderId } });
-      await Notification.create({ userId: orderDoc.userId, title: 'Đơn hàng đã thanh toán ✅', message: `Cảm ơn bạn! Đơn hàng ${orderDoc.orderId} đã được ghi nhận thanh toán.`, type: 'order_paid', meta: { orderId: orderDoc.orderId } });
-    };
-
     // Thông báo đơn mới (luôn gửi admin biết có đơn)
     io.to('admin').emit('new_notification', {
       title: 'Đơn hàng mới! 🛒',
@@ -1035,6 +1177,13 @@ app.post('/api/orders', authMiddleware, async (req, res) => {
     // Nếu client muốn đánh dấu là đã thanh toán ngay khi tạo đơn
     if (req.body.isPaid === true || req.body.paymentStatus === 'Đã thanh toán') {
       await markOrderAsPaid(newOrder);
+      io.to('admin').emit('new_notification', {
+        title: 'Thanh toán thành công ✅',
+        message: `Đơn hàng ${newOrder.orderId} đã được thanh toán tự động/thuận tiện.`,
+        type: 'order_paid'
+      });
+      await Notification.create({ title: 'Thanh toán thành công ✅', message: `Đơn hàng ${newOrder.orderId} đã được thanh toán.`, type: 'order_paid', meta: { orderId: newOrder.orderId } });
+      await Notification.create({ userId: newOrder.userId, title: 'Đơn hàng đã thanh toán ✅', message: `Cảm ơn bạn! Đơn hàng ${newOrder.orderId} đã được ghi nhận thanh toán.`, type: 'order_paid', meta: { orderId: newOrder.orderId } });
       await newOrder.reload?.();
     }
 
@@ -1152,13 +1301,7 @@ app.post('/api/sepay-webhook', async (req, res) => {
     if (order.paymentStatus === 'Đã thanh toán') return res.json({ success: true });
 
     if (amount >= order.totalPrice) {
-      // Tăng trường sold cho từng sản phẩm trong đơn
-      for (const item of order.items) {
-        await Product.findByIdAndUpdate(item.productId, { $inc: { sold: item.quantity } });
-      }
-      order.paymentStatus = 'Đã thanh toán';
-      // Giữ status hiện tại (admin có thể chuyển tiếp)
-      await order.save();
+      await markOrderAsPaid(order);
 
       io.to('admin').emit('new_notification', {
         title: 'Thanh toán tự động từ SePay ✅',
@@ -1186,11 +1329,7 @@ app.post('/webhook/sepay', async (req, res) => {
     if (order.paymentStatus === 'Đã thanh toán') return res.json({ success: true });
 
     if (amount >= order.totalPrice) {
-      for (const item of order.items) {
-        await Product.findByIdAndUpdate(item.productId, { $inc: { sold: item.quantity } });
-      }
-      order.paymentStatus = 'Đã thanh toán';
-      await order.save();
+      await markOrderAsPaid(order);
 
       io.to('admin').emit('new_notification', {
         title: 'Thanh toán SePay ✅',
@@ -1220,10 +1359,7 @@ app.patch('/api/customer/orders/:id/cancel', authMiddleware, async (req, res) =>
       return res.status(400).json({ success: false, message: "Đơn hàng đã được xử lý, bạn không thể tự hủy!" });
     }
 
-    // Hoàn lại số lượng tồn kho sản phẩm
-    for (const item of order.items) {
-      await Product.findByIdAndUpdate(item.productId, { $inc: { stock: item.quantity } });
-    }
+    await releaseOrderStock(order);
 
     order.status = 'Hủy đơn hàng';
     if (order.paymentStatus === 'Chờ thanh toán') order.paymentStatus = 'Thanh toán thất bại';
@@ -1252,8 +1388,7 @@ app.patch('/api/customer/orders/:id/receive', authMiddleware, async (req, res) =
     }
 
     order.status = 'Đã nhận';
-    order.paymentStatus = 'Đã thanh toán'; // Nếu đi COD thì khi nhận hàng coi như đã thanh toán
-    await order.save();
+    await markOrderAsPaid(order); // Nếu đi COD thì khi nhận hàng coi như đã thanh toán
 
     io.to('admin').emit('new_notification', {
       title: 'Khách hàng đã nhận hàng ✅',
@@ -1284,9 +1419,7 @@ app.put('/api/admin/orders/:id', authMiddleware, adminMiddleware, async (req, re
         return res.status(400).json({ success: false, message: "Đơn hàng đã hoàn thành, không thể hủy đè!" });
       }
       // Hoàn lại số lượng tồn kho sản phẩm khi admin hủy
-      for (const item of order.items) {
-        await Product.findByIdAndUpdate(item.productId, { $inc: { stock: item.quantity } });
-      }
+      await releaseOrderStock(order);
       order.status = 'Hủy đơn hàng';
       order.paymentStatus = 'Thanh toán thất bại';
     } else {
@@ -1303,27 +1436,6 @@ app.put('/api/admin/orders/:id', authMiddleware, adminMiddleware, async (req, re
     });
     await Notification.create({ userId: order.userId, title: 'Cập nhật đơn hàng 📦', message: `Đơn hàng ${order.orderId} của bạn đã chuyển sang trạng thái: ${status}.`, type: 'order_status', meta: { orderId: order.orderId, status } });
     res.json({ success: true, message: "Cập nhật trạng thái đơn thành công!", order });
-  } catch (error) {
-    res.status(500).json({ success: false, message: "Không thể cập nhật đơn hàng" });
-  }
-});
-
-// [ADMIN] Lấy danh sách toàn bộ đơn hàng
-app.get('/api/admin/orders', authMiddleware, adminMiddleware, async (req, res) => {
-  try {
-    const orders = await Order.find().sort({ createdAt: -1 });
-    res.json(orders);
-  } catch (error) {
-    res.status(500).json({ message: "Không thể tải danh sách đơn hàng" });
-  }
-});
-
-// [ADMIN] Cập nhật trạng thái đơn thủ công
-app.put('/api/admin/orders/:id', authMiddleware, adminMiddleware, async (req, res) => {
-  try {
-    const { status, paymentStatus } = req.body;
-    const updatedOrder = await Order.findByIdAndUpdate(req.params.id, { status, paymentStatus }, { returnDocument: 'after' });
-    res.json({ success: true, message: "Cập nhật trạng thái đơn thành công!", order: updatedOrder });
   } catch (error) {
     res.status(500).json({ success: false, message: "Không thể cập nhật đơn hàng" });
   }
@@ -1359,7 +1471,6 @@ app.get('/api/admin/orders/export-excel', authMiddleware, adminMiddleware, async
       shippingAddress: order.shippingAddress,
       paymentMethod: order.paymentMethod === 'COD' ? 'Nhận hàng (COD)' : 'Chuyển khoản',
       paymentStatus: order.paymentStatus === 'Đã thanh toán' ? 'Đã thanh toán' : (order.paymentStatus === 'Thanh toán thất bại' || order.paymentStatus === 'FAILED' ? 'Thất bại' : 'Chờ xử lý'),
-      // Đồng bộ trạng thái Tiếng Việt chuẩn tại đây:
       status: order.status, 
       totalPrice: order.totalPrice, 
       createdAt: new Date(order.createdAt).toLocaleString('vi-VN'),
@@ -1654,16 +1765,103 @@ app.patch('/api/notifications/read-all', authMiddleware, async (req, res) => {
 //             8. INTEGRATED AI CHATBOT (PUBLIC)
 // ==========================================
 
-app.post('/api/chat', async (req, res) => {
+const handleChatAsk = async (req, res) => {
   const { message } = req.body;
+  const chatIdentity = resolveChatIdentity(req);
+  const userQuestion = String(message || '').trim();
+
+  if (!userQuestion) {
+    return res.status(400).json({ content: 'Vui lòng nhập nội dung cần hỏi.' });
+  }
 
   try {
-    const products = await Product.find({}, 'name price stock description category brand');
+    const products = await Product.find({}, 'name price stock description category brand image');
+    const chatQuery = buildChatHistoryQuery(chatIdentity);
+    const chatHistory = chatQuery
+      ? await ChatHistory.findOne(chatQuery).lean()
+      : null;
+
+    const wantsOrderInfo = isOrderQuestion(userQuestion);
+    const wantsProductInfo = isProductQuestion(userQuestion);
+    const currentUserId = chatIdentity.userId;
+    const orderCode = extractOrderCodeFromMessage(userQuestion);
+
+    if (wantsOrderInfo) {
+      if (!currentUserId) {
+        return res.json({
+          content: 'Bạn cần đăng nhập để TechShop tra cứu lịch sử đơn hàng cá nhân. Sau khi đăng nhập, bạn có thể xem toàn bộ đơn tại màn quản lý đơn hàng.',
+          action: 'order-login-required',
+          targetUrl: '/login',
+          sessionId: chatIdentity.sessionId || null,
+          userId: null
+        });
+      }
+
+      const orderQuery = { userId: currentUserId };
+      if (orderCode) {
+        orderQuery.orderId = orderCode;
+      }
+
+      const orders = await Order.find(orderQuery).sort({ createdAt: -1 }).limit(3).lean();
+      if (orders.length === 0) {
+        return res.json({
+          content: 'TechShop chưa tìm thấy đơn hàng phù hợp trong tài khoản của bạn. Bạn có thể mở màn quản lý đơn hàng để kiểm tra toàn bộ lịch sử mua hàng.',
+          action: 'order-empty',
+          targetUrl: '/my-orders',
+          orders: [],
+          sessionId: chatIdentity.sessionId || null,
+          userId: currentUserId
+        });
+      }
+
+      const orderSummaries = orders.map(buildOrderSummary);
+      const primaryOrder = orderSummaries[0];
+
+      return res.json({
+        content: `TechShop tìm thấy ${orderSummaries.length} đơn hàng của bạn. Bạn có thể bấm vào nút bên dưới để mở màn quản lý đơn hàng và xem chi tiết từng đơn.`,
+        action: 'order-results',
+        targetUrl: primaryOrder.detailUrl || '/my-orders',
+        orders: orderSummaries,
+        sessionId: chatIdentity.sessionId || null,
+        userId: currentUserId
+      });
+    }
+
+    if (wantsProductInfo) {
+      const productMatches = await buildBestProductMatches(userQuestion);
+      if (productMatches.length > 0) {
+        const productResults = productMatches.map((product) => ({
+          _id: product._id?.toString?.() || String(product._id),
+          name: product.name,
+          price: product.price,
+          stock: product.stock,
+          description: product.description,
+          category: product.category,
+          brand: product.brand,
+          image: buildProductImagePath(product.image)
+        }));
+
+        return res.json({
+          content: `TechShop đã tìm thấy ${productResults.length} sản phẩm phù hợp. Bạn có thể bấm để xem chi tiết từng sản phẩm.`,
+          action: 'product-results',
+          targetUrl: `/product/${productResults[0]._id}`,
+          products: productResults,
+          sessionId: chatIdentity.sessionId || null,
+          userId: currentUserId || null
+        });
+      }
+    }
     
     let productContext = "Dưới đây là danh sách toàn bộ sản phẩm công nghệ đang có sẵn trong cửa hàng TechShop của chúng ta:\n";
     products.forEach((p, index) => {
       productContext += `${index + 1}. Tên: ${p.name} | Giá: ${p.price.toLocaleString()} VNĐ | Hãng: ${p.brand} | Loại: ${p.category} | Số lượng tồn kho: ${p.stock} chiếc | Mô tả: ${p.description || 'Không có'}\n`;
     });
+
+    const recentMessages = [...(chatHistory?.messages || []), ...(Array.isArray(req.body.history) ? req.body.history : [])]
+      .filter((item) => item && typeof item.content === 'string')
+      .slice(-8)
+      .map((item) => `${item.role === 'assistant' || item.role === 'ai' ? 'Trợ lý' : 'Khách hàng'}: ${item.content}`)
+      .join('\n');
 
     const systemPrompt = `Bạn là một nhân viên tư vấn bán hàng trực tuyến xuất sắc, thân thiện và am hiểu công nghệ tại cửa hàng "TechShop".
     Nhiệm vụ trọng tâm của bạn là sử dụng ngữ cảnh danh sách sản phẩm được cung cấp bên dưới để trả lời các câu hỏi từ khách hàng một cách ngắn gọn, thuyết phục, tập trung chốt đơn.
@@ -1678,6 +1876,9 @@ app.post('/api/chat', async (req, res) => {
     ${productContext}
     ---------------------------------
 
+    LỊCH SỬ HỘI THOẠI GẦN ĐÂY:
+    ${recentMessages || 'Chưa có lịch sử hội thoại trước đó.'}
+
     Khách hàng nhắn: "${message}"
     Hãy đưa ra câu trả lời tư vấn ngắn gọn, chuyên nghiệp và tối ưu nhất:`;
 
@@ -1687,11 +1888,38 @@ app.post('/api/chat', async (req, res) => {
       stream: false
     });
 
-    res.json({ content: aiResponse.data.response });
+    const content = aiResponse.data.response || 'Xin lỗi, TechShop chưa lấy được phản hồi từ hệ thống AI.';
+    await persistChatExchange({
+      ...chatIdentity,
+      userMessage: userQuestion,
+      assistantMessage: content
+    });
+
+    res.json({ content, sessionId: chatIdentity.sessionId || null, userId: chatIdentity.userId || null, action: 'text' });
 
   } catch (error) {
     console.error("Lỗi AI:", error.message);
     res.status(500).json({ content: "Chatbot đang bảo trì, vui lòng quay lại sau!" });
+  }
+};
+
+app.post('/api/chat', handleChatAsk);
+app.post('/api/chat/ask', handleChatAsk);
+
+app.delete('/api/chat/clear', async (req, res) => {
+  try {
+    const userId = getOptionalUserId(req);
+    const sessionId = req.body?.sessionId || req.query?.sessionId || null;
+    const query = userId ? { userId } : (sessionId ? { sessionId } : null);
+
+    if (!query) {
+      return res.status(400).json({ success: false, message: 'Cần cung cấp sessionId hoặc token đăng nhập để xóa lịch sử chat.' });
+    }
+
+    const result = await ChatHistory.deleteMany(query);
+    res.json({ success: true, deletedCount: result.deletedCount || 0 });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Không thể xóa lịch sử chat' });
   }
 });
 
@@ -1711,9 +1939,7 @@ cron.schedule('*/5 * * * *', async () => {
 
     for (const order of expiredOrders) {
       // Hoàn kho trước khi hủy đơn tự động
-      for (const item of order.items) {
-        await Product.findByIdAndUpdate(item.productId, { $inc: { stock: item.quantity } });
-      }
+      await releaseOrderStock(order);
       order.paymentStatus = 'Thanh toán thất bại'; 
       order.status = 'Hủy đơn hàng';
       await order.save();
@@ -1746,6 +1972,18 @@ cron.schedule('0 3 * * *', async () => {
     }
   } catch (error) {
     console.error('Lỗi khi dọn thông báo cũ:', error);
+  }
+});
+
+cron.schedule('0 4 * * *', async () => {
+  try {
+    const expiredAt = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+    const result = await ChatHistory.deleteMany({ updatedAt: { $lt: expiredAt } });
+    if (result.deletedCount > 0) {
+      console.log(`[Hệ thống] Đã xóa ${result.deletedCount} cuộc hội thoại chat cũ hơn 3 ngày`);
+    }
+  } catch (error) {
+    console.error('Lỗi khi dọn lịch sử chat cũ:', error);
   }
 });
 
