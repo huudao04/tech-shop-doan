@@ -26,6 +26,7 @@ const Login = () => {
         message.success('Đăng nhập hệ thống thành công!');
         localStorage.setItem('token', response.data.token);
         localStorage.setItem('user', JSON.stringify(response.data.user));
+        window.dispatchEvent(new Event('auth-change'));
 
         if (response.data.user.role === 'admin') {
           navigate('/admin');
@@ -55,6 +56,7 @@ const Login = () => {
         message.success('Đăng nhập bằng Google thành công!');
         localStorage.setItem('token', response.data.token);
         localStorage.setItem('user', JSON.stringify(response.data.user));
+        window.dispatchEvent(new Event('auth-change'));
 
         if (response.data.user.role === 'admin') {
           navigate('/admin');

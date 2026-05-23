@@ -43,6 +43,7 @@ const Profile = () => {
         // Đăng xuất và đẩy người dùng về trang login buộc họ đăng nhập lại với pass mới
         setTimeout(() => {
           localStorage.clear();
+          window.dispatchEvent(new Event('auth-change'));
           window.location.href = '/login';
         }, 1500);
       }

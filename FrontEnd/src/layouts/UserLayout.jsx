@@ -202,6 +202,7 @@ const UserLayout = () => {
 
   const handleLogout = () => {
     localStorage.clear();
+    window.dispatchEvent(new Event('auth-change'));
     window.location.href = '/login';
   };
 

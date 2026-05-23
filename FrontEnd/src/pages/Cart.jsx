@@ -7,12 +7,14 @@ import { useCart } from '../context/CartContex.jsx';
 const { Title, Text } = Typography;
 
 const Cart = () => {
-  const { cartItems, updateCart } = useCart();
+  const { cartItems, updateCart, cartLoading } = useCart();
   const [isInitialized, setIsInitialized] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
   const [selectedRowKeys, setSelectedRowKeys] = useState([]);
 
   const navigate = useNavigate(); // Khai báo hook điều hướng trang
+
+  const getImageSource = (image) => Array.isArray(image) ? image[0] : image;
   
   // Tự động tích chọn TẤT CẢ sản phẩm khi người dùng vừa vào trang giỏ hàng
   useEffect(() => {
@@ -97,6 +99,15 @@ const Cart = () => {
     });
   };
 
+  if (cartLoading) {
+    return (
+      <div style={{ textAlign: 'center', padding: '80px 20px' }}>
+        <ShoppingCartOutlined style={{ fontSize: 42, marginBottom: 16 }} />
+        <div>Đang tải giỏ hàng từ hệ thống...</div>
+      </div>
+    );
+  }
+
   const columns = [
     {
       title: 'Sản phẩm',
@@ -105,7 +116,7 @@ const Cart = () => {
       render: (text, record) => (
         <Space>
           <img 
-            src={`/images/${record.image}`} 
+            src={getImageSource(record.image) ? `/images/${getImageSource(record.image)}` : 'https://via.placeholder.com/50'} 
             alt={text} 
             style={{ width: 50 }} 
             onError={(e) => { e.target.src = 'https://via.placeholder.com/50'; }}

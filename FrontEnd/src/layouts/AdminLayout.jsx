@@ -107,6 +107,7 @@ const AdminLayout = () => {
   const handleLogout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
+    window.dispatchEvent(new Event('auth-change'));
     window.location.href = '/login';
   };
 
