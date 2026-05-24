@@ -70,10 +70,19 @@ io.on('connection', (socket) => {
 // ==========================================
 //             1. KẾT NỐI MONGODB
 // ==========================================
-mongoose.connect(process.env.MONGODB_URI)
-  .then(() => console.log('✅ Kết nối MongoDB thành công!'))
-  .catch(err => console.error('❌ Lỗi kết nối MongoDB:', err));
+const dbURI = process.env.MONGODB_URI;
 
+if (!dbURI) {
+  console.error("LỖI: Biến môi trường MONGODB_URI chưa được thiết lập trên Server!");
+  process.exit(1); // Dừng app lại để báo cho bạn biết là chưa cấu hình
+}
+
+mongoose.connect(dbURI)
+  .then(() => console.log('Đã kết nối cơ sở dữ liệu thành công! 🎉'))
+  .catch((err) => {
+      console.error('Lỗi kết nối MongoDB:', err);
+      process.exit(1); 
+  });
 // ==========================================
 //             2. ĐỊNH NGHĨA SCHEMAS
 // ==========================================
