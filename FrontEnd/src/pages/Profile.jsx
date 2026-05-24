@@ -1,18 +1,21 @@
 import React, { useState } from 'react';
 import { Card, Descriptions, Badge, Avatar, Button, Space, Divider, Modal, Form, Input, message } from 'antd';
-import { UserOutlined, KeyOutlined, ArrowLeftOutlined, SolutionOutlined, LockOutlined } from '@ant-design/icons';
+import { UserOutlined, KeyOutlined, ArrowLeftOutlined, SolutionOutlined, LockOutlined, EditOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import API from '../utils/axiosClient';
 
 const Profile = () => {
   const navigate = useNavigate();
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [form] = Form.useForm();
-  const [loading, setLoading] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [passwordForm] = Form.useForm();
+  const [profileForm] = Form.useForm();
+  const [passwordLoading, setPasswordLoading] = useState(false);
+  const [profileLoading, setProfileLoading] = useState(false);
   
   // Đọc thông tin người dùng từ localStorage
   const token = localStorage.getItem('token');
-  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  const [user, setUser] = useState(() => JSON.parse(localStorage.getItem('user') || '{}'));
 
   if (!token) {
     return (
@@ -25,7 +28,7 @@ const Profile = () => {
 
   // Xử lý gửi dữ liệu đổi mật khẩu lên Backend
   const handleChangePassword = async (values) => {
-    setLoading(true);
+    setPasswordLoading(true);
     try {
       const response = await API.put(
         '/api/auth/change-password', 
@@ -38,7 +41,7 @@ const Profile = () => {
       if (response.data.success) {
         message.success(response.data.message);
         setIsModalOpen(false);
-        form.resetFields();
+        passwordForm.resetFields();
         
         // Đăng xuất và đẩy người dùng về trang login buộc họ đăng nhập lại với pass mới
         setTimeout(() => {
@@ -51,7 +54,40 @@ const Profile = () => {
       const errorMsg = error.response?.data?.message || 'Có lỗi xảy ra, vui lòng thử lại!';
       message.error(errorMsg);
     } finally {
-      setLoading(false);
+      setPasswordLoading(false);
+    }
+  };
+
+  const openEditModal = () => {
+    profileForm.setFieldsValue({
+      name: user.name || '',
+      email: user.email || ''
+    });
+    setIsEditModalOpen(true);
+  };
+
+  const handleUpdateProfile = async (values) => {
+    setProfileLoading(true);
+    try {
+      const response = await API.put('/api/auth/profile', {
+        name: values.name,
+        email: values.email
+      });
+
+      if (response.data.success && response.data.user) {
+        const updatedUser = response.data.user;
+        setUser(updatedUser);
+        localStorage.setItem('user', JSON.stringify(updatedUser));
+        window.dispatchEvent(new Event('auth-change'));
+        message.success(response.data.message || 'Cập nhật thông tin thành công!');
+        setIsEditModalOpen(false);
+        profileForm.resetFields();
+      }
+    } catch (error) {
+      const errorMsg = error.response?.data?.message || 'Không thể cập nhật thông tin cá nhân!';
+      message.error(errorMsg);
+    } finally {
+      setProfileLoading(false);
     }
   };
 
@@ -119,6 +155,12 @@ const Profile = () => {
             </Button>
           )}
           <Button 
+            icon={<EditOutlined />}
+            onClick={openEditModal}
+          >
+            Sửa thông tin
+          </Button>
+          <Button 
             type="primary"
             icon={<KeyOutlined />} 
             onClick={() => setIsModalOpen(true)}
@@ -134,13 +176,13 @@ const Profile = () => {
         open={isModalOpen}
         onCancel={() => {
           setIsModalOpen(false);
-          form.resetFields();
+          passwordForm.resetFields();
         }}
         footer={null}
         destroyOnClose
       >
         <Form
-          form={form}
+          form={passwordForm}
           layout="vertical"
           onFinish={handleChangePassword}
           style={{ marginTop: 20 }}
@@ -185,11 +227,63 @@ const Profile = () => {
 
           <Form.Item style={{ marginBottom: 0, textAlign: 'right' }}>
             <Space>
-              <Button onClick={() => { setIsModalOpen(false); form.resetFields(); }}>
+              <Button onClick={() => { setIsModalOpen(false); passwordForm.resetFields(); }}>
                 Hủy bỏ
               </Button>
-              <Button type="primary" htmlType="submit" loading={loading}>
+              <Button type="primary" htmlType="submit" loading={passwordLoading}>
                 Cập nhật
+              </Button>
+            </Space>
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* ================= MODAL SỬA THÔNG TIN ================= */}
+      <Modal
+        title={<div><EditOutlined style={{ marginRight: 8, color: '#1677ff' }} /> Sửa thông tin cá nhân</div>}
+        open={isEditModalOpen}
+        onCancel={() => {
+          setIsEditModalOpen(false);
+          profileForm.resetFields();
+        }}
+        footer={null}
+        destroyOnClose
+      >
+        <Form
+          form={profileForm}
+          layout="vertical"
+          onFinish={handleUpdateProfile}
+          style={{ marginTop: 20 }}
+        >
+          <Form.Item
+            name="name"
+            label="Họ và tên"
+            rules={[
+              { required: true, message: 'Vui lòng nhập họ và tên!' },
+              { min: 2, message: 'Họ và tên phải từ 2 ký tự trở lên!' }
+            ]}
+          >
+            <Input placeholder="Nhập họ và tên" />
+          </Form.Item>
+
+          <Form.Item
+            name="email"
+            label="Địa chỉ Email"
+            rules={[
+              { required: true, message: 'Vui lòng nhập địa chỉ email!' },
+              { type: 'email', message: 'Email không đúng định dạng!' }
+            ]}
+          >
+            <Input placeholder="example@gmail.com" />
+          </Form.Item>
+
+          <Form.Item style={{ marginBottom: 0, textAlign: 'right' }}>
+            <Space>
+              <Button onClick={() => { setIsEditModalOpen(false); profileForm.resetFields(); }}>
+                Hủy bỏ
+              </Button>
+              <Button type="primary" htmlType="submit" loading={profileLoading}>
+                Lưu thay đổi
               </Button>
             </Space>
           </Form.Item>

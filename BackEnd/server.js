@@ -462,6 +462,54 @@ app.put('/api/auth/change-password', authMiddleware, async (req, res) => {
     res.status(500).json({ success: false, message: 'Lỗi hệ thống khi đổi mật khẩu' });
   }
 });
+
+// [USER & ADMIN] API Cập nhật thông tin cá nhân
+app.put('/api/auth/profile', authMiddleware, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const rawName = req.body?.name;
+    const rawEmail = req.body?.email;
+
+    const name = typeof rawName === 'string' ? rawName.trim() : '';
+    const email = typeof rawEmail === 'string' ? rawEmail.trim().toLowerCase() : '';
+
+    if (!name || !email) {
+      return res.status(400).json({ success: false, message: 'Vui lòng nhập đầy đủ họ tên và email!' });
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ success: false, message: 'Email không đúng định dạng!' });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy tài khoản!' });
+    }
+
+    const emailOwner = await User.findOne({ email, _id: { $ne: userId } });
+    if (emailOwner) {
+      return res.status(400).json({ success: false, message: 'Email này đã được sử dụng!' });
+    }
+
+    user.name = name;
+    user.email = email;
+    await user.save();
+
+    return res.json({
+      success: true,
+      message: 'Cập nhật thông tin cá nhân thành công!',
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role
+      }
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: 'Lỗi hệ thống khi cập nhật thông tin' });
+  }
+});
 // ==========================================
 //             4. API AUTHENTICATION
 // ==========================================
