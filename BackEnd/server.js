@@ -16,15 +16,15 @@ import { SePayPgClient } from 'sepay-pg-node';
 import { randomUUID } from 'crypto';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
-const JWT_SECRET = 'TECH_SHOP_SUPER_SECRET_KEY_2026';
 dotenv.config();
+
+const JWT_SECRET = process.env.JWT_SECRET || 'TECH_SHOP_SUPER_SECRET_KEY_2026';
+const PORT = process.env.PORT || 5000;
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-
-const PORT = 5000;
 const genAI = process.env.GEMINI_API_KEY
   ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
   : null;
@@ -33,15 +33,15 @@ const GEMINI_MODEL_CANDIDATES = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'g
 // Khởi tạo client SePay
 const sepayClient = new SePayPgClient({
   env: 'live',
-  merchant_id: 'SP-LIVE-NH783B44',   
-  secret_key: 'spsk_live_FJhRQ7N56cZqs2CV78jUYt8GsbfSx8Wi'  
+  merchant_id: process.env.SEPAY_MERCHANT_ID,
+  secret_key: process.env.SEPAY_SECRET_KEY
 });
 // CẤU HÌNH TRANSPORTER GỬI EMAIL (Cần lấy Mật khẩu ứng dụng - App Password của Gmail)
 const transporter = nodemailer.createTransport({
   service: 'gmail',
   auth: {
-    user: 'dao23122004@gmail.com', // Thay bằng Gmail của shop
-    pass: 'pdlm mtum dbcu btij'     // Thay bằng Mật khẩu ứng dụng 16 ký tự của Gmail
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS
   }
 });
 // TẠO SERVER HTTP GẮN SOCKET.IO
@@ -70,7 +70,7 @@ io.on('connection', (socket) => {
 // ==========================================
 //             1. KẾT NỐI MONGODB
 // ==========================================
-mongoose.connect('mongodb://localhost:27017/tech_shop')
+mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/tech_shop')
   .then(() => console.log('✅ Kết nối MongoDB thành công!'))
   .catch(err => console.error('❌ Lỗi kết nối MongoDB:', err));
 
