@@ -12,7 +12,14 @@ const DEFAULT_MESSAGES = [
 
 const normalizeImageUrl = (image) => {
   if (!image) return '';
-  if (Array.isArray(image)) return image[0] ? `/images/${image[0]}` : '';
+  if (Array.isArray(image)) {
+    const firstImage = image[0];
+    if (!firstImage) return '';
+    if (firstImage.startsWith('http')) return firstImage;
+    if (firstImage.startsWith('/')) return firstImage;
+    return `/images/${firstImage}`;
+  }
+  if (image.startsWith('http')) return image;
   if (image.startsWith('/')) return image;
   return `/images/${image}`;
 };

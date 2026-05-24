@@ -1,11 +1,11 @@
 import express from 'express';
 import cors from 'cors';
-import axios from 'axios';
 import mongoose from 'mongoose';
 import cron from 'node-cron';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import dotenv from 'dotenv';
 import ExcelJS from 'exceljs';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
@@ -14,15 +14,21 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import { SePayPgClient } from 'sepay-pg-node';
 import { randomUUID } from 'crypto';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
 const JWT_SECRET = 'TECH_SHOP_SUPER_SECRET_KEY_2026';
+dotenv.config();
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
+
 const PORT = 5000;
-const OLLAMA_API = 'http://localhost:11434/api/generate'; 
+const genAI = process.env.GEMINI_API_KEY
+  ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
+  : null;
+const GEMINI_MODEL_CANDIDATES = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash'];
 
 // Khởi tạo client SePay
 const sepayClient = new SePayPgClient({
@@ -290,10 +296,16 @@ const buildChatHistoryQuery = ({ userId, sessionId }) => {
 const buildProductImagePath = (image) => {
   if (Array.isArray(image)) {
     const firstImage = image[0] || '';
-    return firstImage ? `/images/${firstImage}` : '';
+    if (!firstImage) return '';
+    if (firstImage.startsWith('http')) return firstImage;
+    if (firstImage.startsWith('/')) return firstImage;
+    return `/images/${firstImage}`;
   }
 
-  return image ? `/images/${image}` : '';
+  if (!image) return '';
+  if (image.startsWith('http')) return image;
+  if (image.startsWith('/')) return image;
+  return `/images/${image}`;
 };
 
 const extractOrderCodeFromMessage = (message) => {
@@ -303,7 +315,7 @@ const extractOrderCodeFromMessage = (message) => {
 
 const isOrderQuestion = (message) => /\b(đơn hàng|don hang|đơn|don|mã đơn|ma don|tra cứu|truy vấn|kiểm tra|kiem tra)\b/i.test(message);
 
-const isProductQuestion = (message) => /\b(sản phẩm|san pham|mặt hàng|mat hang|giới thiệu|gioi thieu|xem chi tiết|chi tiết|chi tiet|mẫu|mau|mua)\b/i.test(message);
+const isProductQuestion = (message) => /\b(sản phẩm|san pham|mặt hàng|mat hang|giới thiệu|gioi thieu|xem chi tiết|chi tiết|chi tiet|mẫu|mau|mua|ảnh|anh|hình ảnh|hinh anh|xem ảnh|xem anh|xem hình|xem hinh)\b/i.test(message);
 
 const buildBestProductMatches = async (message) => {
   const normalizedMessage = message.trim();
@@ -327,6 +339,111 @@ const buildBestProductMatches = async (message) => {
     .lean();
 
   return keywordMatches;
+};
+
+const findReferencedProductName = ({ currentMessage = '', recentMessages = '', products = [] }) => {
+  const combinedText = `${recentMessages}\n${currentMessage}`.toLowerCase();
+  let bestMatch = '';
+  let bestIndex = -1;
+
+  for (const product of products) {
+    const productName = String(product.name || '').trim();
+    if (!productName) continue;
+
+    const lowerName = productName.toLowerCase();
+    const index = combinedText.lastIndexOf(lowerName);
+    if (index >= 0 && index >= bestIndex) {
+      bestIndex = index;
+      bestMatch = productName;
+    }
+  }
+
+  return bestMatch;
+};
+
+const parseAiJsonResponse = (text) => {
+  if (!text || typeof text !== 'string') return null;
+
+  const trimmedText = text.trim();
+  const jsonMatch = trimmedText.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) return null;
+
+  try {
+    return JSON.parse(jsonMatch[0]);
+  } catch (error) {
+    return null;
+  }
+};
+
+const detectChatIntent = async ({ message, recentMessages, products }) => {
+  if (!genAI) {
+    return { intent: 'other', query: message, confidence: 0 };
+  }
+
+  const referencedProductName = findReferencedProductName({
+    currentMessage: message,
+    recentMessages,
+    products
+  });
+
+  const productNames = products
+    .slice(0, 25)
+    .map((product) => `- ${product.name}`)
+    .join('\n');
+
+  const intentPrompt = `Bạn là bộ phân loại ý định cho chatbot bán hàng TechShop.
+Phân tích hội thoại và chỉ trả về JSON hợp lệ theo mẫu:
+{"intent":"product|order|other","query":"chuỗi tìm kiếm ngắn gọn hoặc rỗng","confidence":0.0}
+
+Quy tắc:
+- intent = product nếu người dùng muốn xem, hỏi, so sánh, tìm, mở, hoặc xem ảnh/hình của sản phẩm.
+- intent = order nếu người dùng hỏi đơn hàng, vận chuyển, trạng thái đơn, mã đơn.
+- Nếu người dùng nói "cái đó", "nó", "sản phẩm này", "cho tôi xem ảnh", "xem hình", hãy suy luận từ ngữ cảnh hội thoại gần nhất.
+- Nếu đã xác định được sản phẩm được nhắc gần nhất, hãy dùng đúng tên đó làm query.
+- query nên là tên sản phẩm hoặc cụm từ tìm kiếm ngắn gọn nhất có thể, ưu tiên tên sản phẩm nếu xác định được.
+- Không được thêm giải thích ngoài JSON.
+
+Danh sách sản phẩm đang có:
+${productNames || '- (trống)'}
+
+Sản phẩm được nhắc gần nhất trong hội thoại, nếu có:
+${referencedProductName || '- (không xác định)'}
+
+Hội thoại gần đây:
+${recentMessages || '- (không có)'}
+
+Tin nhắn hiện tại:
+${message}`;
+
+  let lastError = null;
+  for (const modelName of GEMINI_MODEL_CANDIDATES) {
+    try {
+      const model = genAI.getGenerativeModel({ model: modelName });
+      const result = await model.generateContent(intentPrompt);
+      const text = result?.response?.text?.() || '';
+      const parsed = parseAiJsonResponse(text);
+
+      if (parsed && typeof parsed === 'object') {
+        const intent = ['product', 'order', 'other'].includes(parsed.intent) ? parsed.intent : 'other';
+        const query = typeof parsed.query === 'string' ? parsed.query.trim() : '';
+
+        return {
+          intent,
+          query: query || referencedProductName || message,
+          confidence: Number(parsed.confidence) || 0
+        };
+      }
+
+      return { intent: 'other', query: referencedProductName || message, confidence: 0 };
+    } catch (error) {
+      lastError = error;
+      if (error?.status === 404) continue;
+      break;
+    }
+  }
+
+  console.error('Lỗi phân loại intent chatbot:', lastError?.message || lastError);
+  return { intent: 'other', query: referencedProductName || message, confidence: 0 };
 };
 
 const buildOrderSummary = (order) => ({
@@ -1830,11 +1947,24 @@ const handleChatAsk = async (req, res) => {
       : null;
 
     const wantsOrderInfo = isOrderQuestion(userQuestion);
-    const wantsProductInfo = isProductQuestion(userQuestion);
     const currentUserId = chatIdentity.userId;
     const orderCode = extractOrderCodeFromMessage(userQuestion);
+    const recentMessages = [...(chatHistory?.messages || []), ...(Array.isArray(req.body.history) ? req.body.history : [])]
+      .filter((item) => item && typeof item.content === 'string')
+      .slice(-8)
+      .map((item) => `${item.role === 'assistant' || item.role === 'ai' ? 'Trợ lý' : 'Khách hàng'}: ${item.content}`)
+      .join('\n');
 
-    if (wantsOrderInfo) {
+    const chatIntent = await detectChatIntent({
+      message: userQuestion,
+      recentMessages,
+      products
+    });
+    const productQuery = (chatIntent.query || userQuestion).trim();
+    const productMatches = await buildBestProductMatches(productQuery);
+    const isFollowUpProductAsk = /\b(xem|cho tôi xem|cho mình xem|show|ảnh|hình|hinh|chi tiết|chi tiet|details|image|photo)\b/i.test(userQuestion);
+
+    if (wantsOrderInfo || chatIntent.intent === 'order') {
       if (!currentUserId) {
         return res.json({
           content: 'Bạn cần đăng nhập để TechShop tra cứu lịch sử đơn hàng cá nhân. Sau khi đăng nhập, bạn có thể xem toàn bộ đơn tại màn quản lý đơn hàng.',
@@ -1875,41 +2005,32 @@ const handleChatAsk = async (req, res) => {
       });
     }
 
-    if (wantsProductInfo) {
-      const productMatches = await buildBestProductMatches(userQuestion);
-      if (productMatches.length > 0) {
-        const productResults = productMatches.map((product) => ({
-          _id: product._id?.toString?.() || String(product._id),
-          name: product.name,
-          price: product.price,
-          stock: product.stock,
-          description: product.description,
-          category: product.category,
-          brand: product.brand,
-          image: buildProductImagePath(product.image)
-        }));
+    if ((chatIntent.intent === 'product' || isFollowUpProductAsk) && productMatches.length > 0) {
+      const productResults = productMatches.map((product) => ({
+        _id: product._id?.toString?.() || String(product._id),
+        name: product.name,
+        price: product.price,
+        stock: product.stock,
+        description: product.description,
+        category: product.category,
+        brand: product.brand,
+        image: buildProductImagePath(product.image)
+      }));
 
-        return res.json({
-          content: `TechShop đã tìm thấy ${productResults.length} sản phẩm phù hợp. Bạn có thể bấm để xem chi tiết từng sản phẩm.`,
-          action: 'product-results',
-          targetUrl: `/product/${productResults[0]._id}`,
-          products: productResults,
-          sessionId: chatIdentity.sessionId || null,
-          userId: currentUserId || null
-        });
-      }
+      return res.json({
+        content: `TechShop đã tìm thấy ${productResults.length} sản phẩm phù hợp. Bạn có thể bấm để xem chi tiết từng sản phẩm.`,
+        action: 'product-results',
+        targetUrl: `/product/${productResults[0]._id}`,
+        products: productResults,
+        sessionId: chatIdentity.sessionId || null,
+        userId: currentUserId || null
+      });
     }
-    
+
     let productContext = "Dưới đây là danh sách toàn bộ sản phẩm công nghệ đang có sẵn trong cửa hàng TechShop của chúng ta:\n";
     products.forEach((p, index) => {
       productContext += `${index + 1}. Tên: ${p.name} | Giá: ${p.price.toLocaleString()} VNĐ | Hãng: ${p.brand} | Loại: ${p.category} | Số lượng tồn kho: ${p.stock} chiếc | Mô tả: ${p.description || 'Không có'}\n`;
     });
-
-    const recentMessages = [...(chatHistory?.messages || []), ...(Array.isArray(req.body.history) ? req.body.history : [])]
-      .filter((item) => item && typeof item.content === 'string')
-      .slice(-8)
-      .map((item) => `${item.role === 'assistant' || item.role === 'ai' ? 'Trợ lý' : 'Khách hàng'}: ${item.content}`)
-      .join('\n');
 
     const systemPrompt = `Bạn là một nhân viên tư vấn bán hàng trực tuyến xuất sắc, thân thiện và am hiểu công nghệ tại cửa hàng "TechShop".
     Nhiệm vụ trọng tâm của bạn là sử dụng ngữ cảnh danh sách sản phẩm được cung cấp bên dưới để trả lời các câu hỏi từ khách hàng một cách ngắn gọn, thuyết phục, tập trung chốt đơn.
@@ -1930,13 +2051,30 @@ const handleChatAsk = async (req, res) => {
     Khách hàng nhắn: "${message}"
     Hãy đưa ra câu trả lời tư vấn ngắn gọn, chuyên nghiệp và tối ưu nhất:`;
 
-    const aiResponse = await axios.post(OLLAMA_API, {
-      model: 'llama3.1:latest', 
-      prompt: systemPrompt,
-      stream: false
-    });
+    if (!genAI) {
+      return res.status(500).json({ content: 'Chưa cấu hình GEMINI_API_KEY cho chatbot.' });
+    }
 
-    const content = aiResponse.data.response || 'Xin lỗi, TechShop chưa lấy được phản hồi từ hệ thống AI.';
+    let geminiResult = null;
+    let lastGeminiError = null;
+
+    for (const modelName of GEMINI_MODEL_CANDIDATES) {
+      try {
+        const model = genAI.getGenerativeModel({ model: modelName });
+        geminiResult = await model.generateContent(systemPrompt);
+        break;
+      } catch (geminiError) {
+        lastGeminiError = geminiError;
+        if (geminiError?.status === 404) continue;
+        throw geminiError;
+      }
+    }
+
+    if (!geminiResult) {
+      throw lastGeminiError || new Error('Không có model Gemini khả dụng.');
+    }
+
+    const content = geminiResult?.response?.text?.() || 'Xin lỗi, TechShop chưa lấy được phản hồi từ hệ thống AI.';
     await persistChatExchange({
       ...chatIdentity,
       userMessage: userQuestion,
@@ -1946,7 +2084,16 @@ const handleChatAsk = async (req, res) => {
     res.json({ content, sessionId: chatIdentity.sessionId || null, userId: chatIdentity.userId || null, action: 'text' });
 
   } catch (error) {
-    console.error("Lỗi AI:", error.message);
+    console.error("Lỗi AI:", error?.message || error);
+
+    if (error?.status === 429) {
+      return res.status(429).json({ content: 'Gemini đang vượt giới hạn quota. Vui lòng thử lại sau vài phút hoặc nâng gói API key.' });
+    }
+
+    if (error?.status === 404) {
+      return res.status(503).json({ content: 'Model Gemini hiện không khả dụng. Vui lòng kiểm tra cấu hình model trong backend.' });
+    }
+
     res.status(500).json({ content: "Chatbot đang bảo trì, vui lòng quay lại sau!" });
   }
 };
