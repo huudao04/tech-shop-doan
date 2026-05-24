@@ -133,7 +133,7 @@ const UserLayout = () => {
       }
     };
 
-    const socket = io('http://localhost:5000');
+    const socket = io(import.meta.env.VITE_API_URL );
 
     // Khách hàng gia nhập phòng theo Role và ID cá nhân để nhận thông báo đích danh
     socket.emit('join_room', { role: 'customer', userId: user.id });
