@@ -10,6 +10,8 @@ import ExcelJS from 'exceljs';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import nodemailer from 'nodemailer';
+import { v2 as cloudinary } from 'cloudinary';
+import { CloudinaryStorage } from 'multer-storage-cloudinary';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import { SePayPgClient } from 'sepay-pg-node';
@@ -529,29 +531,32 @@ const markOrderAsPaid = async (order) => {
   return true;
 };
 
-// Cấu hình lưu trữ ảnh Upload bằng Multer
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const uploadPath = path.join(process.cwd(), '../frontend/public/images');
-    if (!fs.existsSync(uploadPath)) {
-      fs.mkdirSync(uploadPath, { recursive: true });
-    }
-    cb(null, uploadPath);
+
+// 1. Cấu hình thông tin xác thực Cloudinary từ biến môi trường Render
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET
+});
+
+// 2. Cấu hình lưu trữ Multer đẩy thẳng lên Cloudinary
+const storage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: {
+    folder: 'techshop_products', // Tên thư mục lưu ảnh trên đám mây của bạn
+    allowed_formats: ['jpg', 'png', 'jpeg', 'webp'],
   },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, uniqueSuffix + path.extname(file.originalname));
-  }
 });
 const upload = multer({ storage: storage });
 
 // [ADMIN] Upload ảnh sản phẩm cho màn quản lý sản phẩm
 app.post('/api/upload', authMiddleware, adminMiddleware, upload.array('imageFiles', 8), async (req, res) => {
   try {
-    const fileNames = (req.files || []).map(file => file.filename);
+    // Cloudinary trả về URL tuyệt đối trong trường path
+    const fileNames = (req.files || []).map(file => file.path); 
     res.json({ success: true, fileNames });
   } catch (error) {
-    res.status(500).json({ success: false, message: 'Không thể upload ảnh sản phẩm' });
+    res.status(500).json({ success: false, message: 'Không thể upload ảnh sản phẩm lên Cloudinary' });
   }
 });
 
@@ -933,15 +938,20 @@ app.get('/api/products/:id', async (req, res) => {
 app.post('/api/products', authMiddleware, adminMiddleware, upload.array('image', 5), async (req, res) => {
   try {
     const { name, price, description, category, brand, stock, image } = req.body;
-    const fileNames = Array.isArray(image)
-      ? image
-      : image
-        ? [image]
-        : (req.files ? req.files.map(file => file.filename) : []);
-
+    
+    // Nếu FE truyền chuỗi URL đã upload trước đó, hoặc lấy mảng link từ file vừa submit trực tiếp
+    const fileNames = Array.isArray(image) ? image : image ? [image] : (req.files ? req.files.map(file => file.path) : []);
+    
     const newProduct = new Product({
-      name, price: Number(price), description, category, brand, stock: Number(stock), image: fileNames
+      name,
+      price: Number(price),
+      description,
+      category,
+      brand,
+      stock: Number(stock),
+      image: fileNames // Lưu mảng các chuỗi "https://res.cloudinary.com/..." vào DB
     });
+    
     await newProduct.save();
     res.status(201).json({ success: true, message: "Thêm sản phẩm thành công!", product: newProduct });
   } catch (error) {
@@ -949,23 +959,85 @@ app.post('/api/products', authMiddleware, adminMiddleware, upload.array('image',
   }
 });
 
-// [ADMIN] Sửa sản phẩm
+// [ADMIN] Sửa / Cập nhật sản phẩm (Xử lý đổi ảnh trên Cloudinary)
 app.put('/api/products/:id', authMiddleware, adminMiddleware, upload.array('image', 5), async (req, res) => {
   try {
     const { name, price, description, category, brand, stock, image } = req.body;
-    let updateData = { name, price: Number(price), description, category, brand, stock: Number(stock) };
-    if (Array.isArray(image)) {
-      updateData.image = image;
-    } else if (image) {
-      updateData.image = [image];
-    } else if (req.files && req.files.length > 0) {
-      updateData.image = req.files.map(file => file.filename);
+    
+    // 1. Tìm sản phẩm hiện tại trong DB để lấy danh sách ảnh cũ
+    const product = await Product.findById(req.params.id);
+    if (!product) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy sản phẩm" });
     }
 
-    const updatedProduct = await Product.findByIdAndUpdate(req.params.id, updateData, { returnDocument: 'after' });
-    if (!updatedProduct) return res.status(404).json({ success: false, message: "Không tìm thấy sản phẩm" });
-    res.json({ success: true, message: "Cập nhật thành công!", product: updatedProduct });
+    // 2. Xác định danh sách ảnh mà Frontend muốn giữ lại hoặc truyền lên
+    // (Ant Design khi giữ lại ảnh cũ thường sẽ truyền mảng chuỗi URL qua req.body.image)
+    let keptImages = [];
+    if (Array.isArray(image)) {
+      keptImages = image;
+    } else if (image) {
+      keptImages = [image];
+    }
+
+    // 3. Nếu có file mới được upload lên từ req.files, lấy các đường dẫn URL mới từ Cloudinary
+    let newUploadedImages = [];
+    if (req.files && req.files.length > 0) {
+      newUploadedImages = req.files.map(file => file.path);
+    }
+
+    // Mảng ảnh cuối cùng sẽ lưu vào DB = [Các ảnh cũ được giữ lại] + [Các ảnh mới upload]
+    const finalImages = [...keptImages, ...newUploadedImages];
+
+    // 4. LOGIC XÓA ẢNH CŨ KHÔNG CÒN DÙNG TRÊN CLOUDINARY
+    // Tìm những ảnh có trong DB cũ nhưng KHÔNG nằm trong danh sách giữ lại (finalImages)
+    const imagesToDelete = product.image.filter(oldUrl => !finalImages.includes(oldUrl));
+
+    if (imagesToDelete.length > 0) {
+      for (const imageUrl of imagesToDelete) {
+        try {
+          if (imageUrl.includes('cloudinary.com')) {
+            // Cắt chuỗi lấy public_id
+            const urlParts = imageUrl.split('/');
+            const uploadIndex = urlParts.indexOf('upload');
+            
+            if (uploadIndex !== -1) {
+              const hasVersion = urlParts[uploadIndex + 1].startsWith('v');
+              const startIndex = hasVersion ? uploadIndex + 2 : uploadIndex + 1;
+              
+              const publicIdWithExtension = urlParts.slice(startIndex).join('/');
+              const publicId = publicIdWithExtension.split('.')[0];
+
+              // Gọi lệnh xóa ảnh thừa trên Cloudinary
+              await cloudinary.uploader.destroy(publicId);
+              console.log(`[Cloudinary] Đã xóa ảnh thừa khi cập nhật: ${publicId}`);
+            }
+          }
+        } catch (imgErr) {
+          console.error(`Lỗi khi xóa ảnh thừa trên Cloudinary:`, imgErr);
+        }
+      }
+    }
+
+    // 5. Cập nhật dữ liệu mới vào MongoDB
+    const updateData = {
+      name,
+      price: Number(price),
+      description,
+      category,
+      brand,
+      stock: Number(stock),
+      image: finalImages // Lưu danh sách mảng ảnh đã đồng bộ mới vào DB
+    };
+
+    const updatedProduct = await Product.findByIdAndUpdate(
+      req.params.id, 
+      updateData, 
+      { returnDocument: 'after' }
+    );
+
+    res.json({ success: true, message: "Cập nhật sản phẩm và đồng bộ ảnh thành công!", product: updatedProduct });
   } catch (error) {
+    console.error("Lỗi khi cập nhật sản phẩm:", error);
     res.status(500).json({ success: false, message: "Lỗi khi cập nhật sản phẩm" });
   }
 });
@@ -973,22 +1045,52 @@ app.put('/api/products/:id', authMiddleware, adminMiddleware, upload.array('imag
 // [ADMIN] Xóa sản phẩm
 app.delete('/api/products/:id', authMiddleware, adminMiddleware, async (req, res) => {
   try {
-    const deletedProduct = await Product.findByIdAndDelete(req.params.id);
-    if (!deletedProduct) return res.status(404).json({ success: false, message: "Không tìm thấy sản phẩm" });
+    // 1. Tìm sản phẩm trong DB trước để lấy thông tin mảng ảnh
+    const product = await Product.findById(req.params.id);
+    if (!product) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy sản phẩm" });
+    }
 
-    const uploadPath = path.join(process.cwd(), '../frontend/public/images');
-    const images = Array.isArray(deletedProduct.image) ? deletedProduct.image : [];
+    // 2. Tiến hành xóa các ảnh liên quan trên Cloudinary (nếu có)
+    if (product.image && product.image.length > 0) {
+      // Chạy vòng lặp xóa từng tấm ảnh vì trường `image` của bạn là một mảng []
+      for (const imageUrl of product.image) {
+        try {
+          // Kiểm tra xem có đúng là link của Cloudinary không
+          if (imageUrl.includes('cloudinary.com')) {
+            // Logic bóc tách lấy public_id: 
+            // Cắt chuỗi từ sau chữ '/upload/' -> bỏ v1234567 -> lấy 'techshop_products/tên_file'
+            const urlParts = imageUrl.split('/');
+            const uploadIndex = urlParts.indexOf('upload');
+            
+            if (uploadIndex !== -1) {
+              // Lấy tất cả các phần tử sau '/upload/v123456789/'
+              // urlParts[uploadIndex + 1] thường là version (ví dụ: v17168231) nếu nó bắt đầu bằng chữ 'v'
+              const hasVersion = urlParts[uploadIndex + 1].startsWith('v');
+              const startIndex = hasVersion ? uploadIndex + 2 : uploadIndex + 1;
+              
+              // Ghép lại và loại bỏ đuôi định dạng (.jpg, .png...) ở cuối cùng
+              const publicIdWithExtension = urlParts.slice(startIndex).join('/');
+              const publicId = publicIdWithExtension.split('.')[0]; 
 
-    for (const imageName of images) {
-      const fileName = path.basename(imageName);
-      const filePath = path.join(uploadPath, fileName);
-      if (fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath);
+              // Gọi API của Cloudinary để xóa file trên mây
+              await cloudinary.uploader.destroy(publicId);
+              console.log(`[Cloudinary] Đã xóa ảnh thành công: ${publicId}`);
+            }
+          }
+        } catch (imgErr) {
+          // Nếu lỗi xóa ảnh thì log ra nhưng không làm gián đoạn luồng xóa sản phẩm chính
+          console.error(`Lỗi khi xóa 1 ảnh trên Cloudinary:`, imgErr);
+        }
       }
     }
 
-    res.json({ success: true, message: "Xóa sản phẩm thành công!" });
+    // 3. Sau khi dọn dẹp ảnh trên mây xong, tiến hành xóa sản phẩm dưới MongoDB
+    await Product.findByIdAndDelete(req.params.id);
+    
+    res.json({ success: true, message: "Xóa sản phẩm và các ảnh liên quan thành công!" });
   } catch (error) {
+    console.error("Lỗi khi xóa sản phẩm:", error);
     res.status(500).json({ success: false, message: "Không thể xóa sản phẩm" });
   }
 });
