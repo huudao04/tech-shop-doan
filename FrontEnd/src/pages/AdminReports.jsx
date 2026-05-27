@@ -25,6 +25,7 @@ const { Title } = Typography;
 
 const AdminReports = () => {
   const [loading, setLoading] = useState(true);
+  const [exportLoading, setExportLoading] = useState(false);
   const [chartData, setChartData] = useState([]);
   const [summary, setSummary] = useState({
     totalRevenue: 0,
@@ -33,6 +34,7 @@ const AdminReports = () => {
 
   const fetchReportData = async () => {
     try {
+    setExportLoading(true);
       setLoading(true);
       const res = await API.get('/api/admin/reports-chart');
       // API mới trả về cấu trúc đối tượng { months, totalRevenue, totalOrdersCount }
@@ -75,6 +77,8 @@ const AdminReports = () => {
     } catch (error) {
       console.error(error);
       message.error({ content: 'Xuất file Excel thất bại!', key: 'export' });
+    } finally {
+      setExportLoading(false);
     }
   };
 
@@ -104,6 +108,7 @@ const AdminReports = () => {
           icon={<DownloadOutlined />} 
           size="large"
           onClick={handleExportExcel}
+          loading={exportLoading}
           style={{ backgroundColor: '#10b981', borderColor: '#10b981', fontWeight: 600, borderRadius: '6px' }}
         >
           Xuất file Excel

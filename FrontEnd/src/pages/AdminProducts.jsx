@@ -12,6 +12,8 @@ const AdminProducts = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null); 
   const [fileList, setFileList] = useState([]); // Quản lý file ảnh đang chọn trên giao diện Form
+  const [saving, setSaving] = useState(false);
+  const [deletingProductId, setDeletingProductId] = useState(null);
   const [form] = Form.useForm();
 
   const [filters, setFilters] = useState({
@@ -91,6 +93,7 @@ const AdminProducts = () => {
   };
 
   const onFinish = async (values) => {
+    setSaving(true);
     try {
       let finalImageArray = [];
       const formData = new FormData();
@@ -135,16 +138,21 @@ const AdminProducts = () => {
       fetchProducts(); 
     } catch (error) {
       message.error('Có lỗi xảy ra khi xử lý thông tin sản phẩm');
+    } finally {
+      setSaving(false);
     }
   };
 
   const handleDelete = async (id) => {
+    setDeletingProductId(id);
     try {
       await API.delete(`/api/products/${id}`);
       message.success('Đã xóa sản phẩm!');
       fetchProducts();
     } catch (error) {
       message.error('Lỗi khi xóa sản phẩm');
+    } finally {
+      setDeletingProductId(null);
     }
   };
 
@@ -183,7 +191,7 @@ const AdminProducts = () => {
             onConfirm={() => handleDelete(record._id)}
             okText="Xóa"
             cancelText="Hủy"
-            okButtonProps={{ danger: true }}
+            okButtonProps={{ danger: true, loading: deletingProductId === record._id }}
           >
             <Button danger icon={<DeleteOutlined />}>Xóa</Button>
           </Popconfirm>
@@ -270,6 +278,7 @@ const AdminProducts = () => {
         open={isModalOpen} 
         onCancel={() => setIsModalOpen(false)} 
         onOk={() => form.submit()}
+        confirmLoading={saving}
         destroyOnClose
       >
         <Form form={form} layout="vertical" onFinish={onFinish}>
