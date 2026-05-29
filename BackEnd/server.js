@@ -17,11 +17,13 @@ import { Server } from 'socket.io';
 import { SePayPgClient } from 'sepay-pg-node';
 import { randomUUID } from 'crypto';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+const pdfParseModule = await import('pdf-parse');
+const pdfParse = pdfParseModule?.default || pdfParseModule;
 
 dotenv.config();
 
-const JWT_SECRET = process.env.JWT_SECRET || 'TECH_SHOP_SUPER_SECRET_KEY_2026';
-const PORT = process.env.PORT || 5000;
+const JWT_SECRET = process.env.JWT_SECRET ;
+const PORT = process.env.PORT;
 
 const app = express();
 app.use(cors());
@@ -226,6 +228,15 @@ chatHistorySchema.index({ userId: 1 }, { sparse: true });
 chatHistorySchema.index({ sessionId: 1 }, { sparse: true });
 
 const ChatHistory = mongoose.model('ChatHistory', chatHistorySchema);
+
+const knowledgeSchema = new mongoose.Schema({
+  fileName: { type: String, required: true },
+  content: { type: String, required: true },
+  embedding: { type: [Number], default: [] },
+  createdAt: { type: Date, default: Date.now }
+});
+
+const Knowledge = mongoose.model('Knowledge', knowledgeSchema);
 // ==========================================
 //             3. CẤU HÌNH MIDDLEWARES
 // ==========================================
@@ -302,6 +313,79 @@ const buildChatHistoryQuery = ({ userId, sessionId }) => {
   if (userId) return { userId };
   if (sessionId) return { sessionId };
   return null;
+};
+
+const EMBEDDING_MODEL_CANDIDATES = Array.from(new Set([
+  process.env.EMBEDDING_MODEL,
+  'gemini-embedding-2',
+  'gemini-embedding-001'
+].filter(Boolean)));
+
+const prepareEmbeddingContent = (text, kind = 'query', modelName = EMBEDDING_MODEL_CANDIDATES[0]) => {
+  const content = String(text || '').trim();
+
+  if (modelName === 'gemini-embedding-2') {
+    if (kind === 'document') {
+      return `title: none | text: ${content}`;
+    }
+
+    return `task: search result | query: ${content}`;
+  }
+
+  return content;
+};
+
+const getEmbedding = async (text, kind = 'query') => {
+  if (!genAI) {
+    throw new Error('GEMINI_API_KEY chưa được cấu hình.');
+  }
+
+  let lastError = null;
+
+  for (const modelName of EMBEDDING_MODEL_CANDIDATES) {
+    try {
+      const model = genAI.getGenerativeModel({ model: modelName });
+      const embeddingInput = prepareEmbeddingContent(text, kind, modelName);
+      const result = await model.embedContent(embeddingInput);
+      return result?.embedding?.values || [];
+    } catch (error) {
+      lastError = error;
+      if (error?.status === 404) {
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  throw new Error(
+    `Embedding model not available. Set process.env.EMBEDDING_MODEL to a supported Gemini embedding model. Last error: ${lastError?.message || lastError}`
+  );
+};
+
+const cosineSimilarity = (vecA = [], vecB = []) => {
+  if (!Array.isArray(vecA) || !Array.isArray(vecB) || vecA.length === 0 || vecB.length === 0) {
+    return 0;
+  }
+
+  const length = Math.min(vecA.length, vecB.length);
+  let dotProduct = 0;
+  let magnitudeA = 0;
+  let magnitudeB = 0;
+
+  for (let index = 0; index < length; index += 1) {
+    const valueA = Number(vecA[index]) || 0;
+    const valueB = Number(vecB[index]) || 0;
+
+    dotProduct += valueA * valueB;
+    magnitudeA += valueA * valueA;
+    magnitudeB += valueB * valueB;
+  }
+
+  if (!magnitudeA || !magnitudeB) {
+    return 0;
+  }
+
+  return dotProduct / (Math.sqrt(magnitudeA) * Math.sqrt(magnitudeB));
 };
 
 const buildProductImagePath = (image) => {
@@ -448,7 +532,7 @@ ${message}`;
       return { intent: 'other', query: referencedProductName || message, confidence: 0 };
     } catch (error) {
       lastError = error;
-      if (error?.status === 404) continue;
+      if (error?.status === 404 || error?.status === 429 || error?.status === 503) continue;
       break;
     }
   }
@@ -548,6 +632,23 @@ const storage = new CloudinaryStorage({
   },
 });
 const upload = multer({ storage: storage });
+
+const aiTrainingUploadDir = path.join(process.cwd(), 'uploads', 'ai-training');
+if (!fs.existsSync(aiTrainingUploadDir)) {
+  fs.mkdirSync(aiTrainingUploadDir, { recursive: true });
+}
+
+const aiTrainingUpload = multer({
+  storage: multer.diskStorage({
+    destination: aiTrainingUploadDir,
+    filename: (req, file, callback) => {
+      const safeBaseName = path.basename(file.originalname || 'document').replace(/[^a-zA-Z0-9._-]/g, '_');
+      callback(null, `${Date.now()}-${safeBaseName}`);
+    }
+  })
+});
+
+upload.single = aiTrainingUpload.single.bind(aiTrainingUpload);
 
 // [ADMIN] Upload ảnh sản phẩm cho màn quản lý sản phẩm
 app.post('/api/upload', authMiddleware, adminMiddleware, upload.array('imageFiles', 8), async (req, res) => {
@@ -2037,6 +2138,80 @@ app.patch('/api/notifications/read-all', authMiddleware, async (req, res) => {
   }
 });
 
+app.post('/api/admin/ai-train', authMiddleware, adminMiddleware, upload.single('file'), async (req, res) => {
+  const uploadedFilePath = req.file?.path;
+
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'Vui lòng chọn một file PDF hoặc TXT để huấn luyện.' });
+    }
+
+    const originalFileName = req.file.originalname || 'document';
+    const lowerFileName = originalFileName.toLowerCase();
+    const isPdfFile = req.file.mimetype === 'application/pdf' || lowerFileName.endsWith('.pdf');
+    const isTextFile = req.file.mimetype === 'text/plain' || req.file.mimetype.startsWith('text/') || lowerFileName.endsWith('.txt');
+
+    if (!isPdfFile && !isTextFile) {
+      return res.status(400).json({ success: false, message: 'Chỉ hỗ trợ file PDF hoặc TXT.' });
+    }
+
+    let rawText = '';
+
+    if (isPdfFile) {
+      const pdfBuffer = fs.readFileSync(uploadedFilePath);
+      const pdfData = await pdfParse(pdfBuffer);
+      rawText = pdfData?.text || '';
+    } else {
+      rawText = fs.readFileSync(uploadedFilePath, 'utf8');
+    }
+
+    if (uploadedFilePath && fs.existsSync(uploadedFilePath)) {
+      fs.unlinkSync(uploadedFilePath);
+    }
+
+    const cleanedText = rawText.replace(/\r\n/g, '\n').replace(/\s+\n/g, '\n').trim();
+    if (!cleanedText) {
+      return res.status(400).json({ success: false, message: 'File không chứa nội dung văn bản hợp lệ.' });
+    }
+
+    const chunks = [];
+    for (let startIndex = 0; startIndex < cleanedText.length; startIndex += 500) {
+      const chunk = cleanedText.slice(startIndex, startIndex + 500).trim();
+      if (chunk) {
+        chunks.push(chunk);
+      }
+    }
+
+    const knowledgeRecords = [];
+    for (const chunk of chunks) {
+      const embedding = await getEmbedding(chunk, 'document');
+      knowledgeRecords.push({
+        fileName: originalFileName,
+        content: chunk,
+        embedding
+      });
+    }
+
+    if (knowledgeRecords.length > 0) {
+      await Knowledge.insertMany(knowledgeRecords);
+    }
+
+    return res.json({
+      success: true,
+      message: 'Đã nạp dữ liệu tài liệu vào Knowledge thành công.',
+      fileName: originalFileName,
+      chunkCount: knowledgeRecords.length
+    });
+  } catch (error) {
+    if (uploadedFilePath && fs.existsSync(uploadedFilePath)) {
+      fs.unlinkSync(uploadedFilePath);
+    }
+
+    console.error('Lỗi huấn luyện AI:', error?.message || error);
+    return res.status(500).json({ success: false, message: 'Không thể huấn luyện dữ liệu tài liệu cho chatbot.' });
+  }
+});
+
 // ==========================================
 //             8. INTEGRATED AI CHATBOT (PUBLIC)
 // ==========================================
@@ -2051,6 +2226,7 @@ const handleChatAsk = async (req, res) => {
   }
 
   try {
+    const questionEmbedding = await getEmbedding(userQuestion, 'query');
     const products = await Product.find({}, 'name price stock description category brand image');
     const chatQuery = buildChatHistoryQuery(chatIdentity);
     const chatHistory = chatQuery
@@ -2143,7 +2319,20 @@ const handleChatAsk = async (req, res) => {
       productContext += `${index + 1}. Tên: ${p.name} | Giá: ${p.price.toLocaleString()} VNĐ | Hãng: ${p.brand} | Loại: ${p.category} | Số lượng tồn kho: ${p.stock} chiếc | Mô tả: ${p.description || 'Không có'}\n`;
     });
 
-    const systemPrompt = `Bạn là một nhân viên tư vấn bán hàng trực tuyến xuất sắc, thân thiện và am hiểu công nghệ tại cửa hàng "TechShop".
+    const knowledgeDocuments = await Knowledge.find({}).lean();
+    const matchedKnowledgeContext = knowledgeDocuments
+      .map((document) => ({
+        fileName: document.fileName || 'Tài liệu không rõ tên',
+        content: document.content || '',
+        score: cosineSimilarity(questionEmbedding, document.embedding || [])
+      }))
+      .filter((document) => document.score > 0.45)
+      .sort((left, right) => right.score - left.score)
+      .slice(0, 4)
+      .map((document) => `[${document.fileName}] (${document.score.toFixed(3)}): ${document.content}`)
+      .join('\n\n');
+
+    const systemInstruction = `Bạn là một nhân viên tư vấn bán hàng trực tuyến xuất sắc, thân thiện và am hiểu công nghệ tại cửa hàng "TechShop".
     Nhiệm vụ trọng tâm của bạn là sử dụng ngữ cảnh danh sách sản phẩm được cung cấp bên dưới để trả lời các câu hỏi từ khách hàng một cách ngắn gọn, thuyết phục, tập trung chốt đơn.
 
     Quy tắc bắt buộc khi tư vấn:
@@ -2152,8 +2341,12 @@ const handleChatAsk = async (req, res) => {
     3. Nếu khách hàng hỏi mua sản phẩm có số lượng tồn kho bằng 0, hãy báo là sản phẩm này hiện tại đang tạm hết hàng và gợi ý khách sang một dòng máy khác cùng phân khúc đang còn hàng.
     4. Tuyệt đối KHÔNG ĐƯỢC tự ý bịa đặt thông tin cấu hình hoặc tự tăng/giảm giá tiền sai lệch so với danh sách sản phẩm dưới đây.
 
-    --- NGỮ CẢNH DỮ LIỆU CỬA HÀNG ---
+    --- DỮ LIỆU CỬA HÀNG HIỆN TẠI (TỪ DATABASE) ---
     ${productContext}
+    ---------------------------------
+
+    --- DỮ LIỆU TÀI LIỆU BỔ SUNG (RAG) ---
+    ${matchedKnowledgeContext || 'Chưa có tài liệu bổ sung phù hợp.'}
     ---------------------------------
 
     LỊCH SỬ HỘI THOẠI GẦN ĐÂY:
@@ -2172,11 +2365,11 @@ const handleChatAsk = async (req, res) => {
     for (const modelName of GEMINI_MODEL_CANDIDATES) {
       try {
         const model = genAI.getGenerativeModel({ model: modelName });
-        geminiResult = await model.generateContent(systemPrompt);
+        geminiResult = await model.generateContent(systemInstruction);
         break;
       } catch (geminiError) {
         lastGeminiError = geminiError;
-        if (geminiError?.status === 404) continue;
+        if (geminiError?.status === 404 || geminiError?.status === 429 || geminiError?.status === 503) continue;
         throw geminiError;
       }
     }
@@ -2201,7 +2394,7 @@ const handleChatAsk = async (req, res) => {
       return res.status(429).json({ content: 'Gemini đang vượt giới hạn quota. Vui lòng thử lại sau vài phút hoặc nâng gói API key.' });
     }
 
-    if (error?.status === 404) {
+    if (error?.status === 404 || error?.status === 429 || error?.status === 503) {
       return res.status(503).json({ content: 'Model Gemini hiện không khả dụng. Vui lòng kiểm tra cấu hình model trong backend.' });
     }
 
