@@ -241,14 +241,21 @@ const Knowledge = mongoose.model('Knowledge', knowledgeSchema);
 //             3. CẤU HÌNH MIDDLEWARES
 // ==========================================
 
-// Middleware kiểm tra token hợp lệ
-const authMiddleware = (req, res, next) => {
+// Middleware kiểm tra token hợp lệ và trạng thái tài khoản
+const authMiddleware = async (req, res, next) => {
   const token = req.header('Authorization')?.split(' ')[1];
   if (!token) return res.status(401).json({ message: 'Không tìm thấy token, quyền truy cập bị từ chối!' });
 
   try {
     const verified = jwt.verify(token, JWT_SECRET);
-    req.user = verified;
+
+    // Kiểm tra người dùng trong DB để đảm bảo tài khoản còn hoạt động
+    const user = await User.findById(verified.id);
+    if (!user) return res.status(401).json({ message: 'Tài khoản không tồn tại' });
+    if (user.isActive === false) return res.status(401).json({ message: 'Tài khoản đã bị khóa' });
+
+    // Lưu thông tin rút gọn vào req.user
+    req.user = { id: user._id.toString(), role: user.role };
     next();
   } catch (err) {
     res.status(400).json({ message: 'Token không hợp lệ hoặc đã hết hạn!' });
@@ -2073,6 +2080,55 @@ app.get('/api/admin/customers', authMiddleware, adminMiddleware, async (req, res
     res.json(users);
   } catch (error) {
     res.status(500).json({ success: false, message: 'Lỗi hệ thống khi tải dữ liệu người dùng' });
+  }
+});
+// [ADMIN] Toggle trạng thái (isActive) của 1 user
+app.patch('/api/admin/customers/:id/toggle-status', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const userId = req.params.id;
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({ success: false, message: 'ID người dùng không hợp lệ' });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy người dùng' });
+    }
+
+    // Không cho thay đổi trạng thái của admin qua endpoint này
+    if (user.role === 'admin') {
+      return res.status(403).json({ success: false, message: 'Không thể thay đổi trạng thái tài khoản admin' });
+    }
+
+    user.isActive = !user.isActive;
+    await user.save();
+
+    // Nếu vừa đổi sang 'khóa' thì thông báo qua socket để client logout ngay lập tức
+    if (user.isActive === false) {
+      try {
+        io.to(user._id.toString()).emit('force-logout', { message: 'Tài khoản của bạn đã bị khóa bởi quản trị viên' });
+
+        // Cố gắng ngắt các kết nối socket hiện tại của user
+        if (typeof io.in === 'function' && typeof io.in(user._id.toString()).fetchSockets === 'function') {
+          const sockets = await io.in(user._id.toString()).fetchSockets();
+          for (const s of sockets) {
+            try { s.disconnect(true); } catch (e) { /* ignore per-socket errors */ }
+          }
+        }
+      } catch (err) {
+        console.error('Lỗi khi phát sự kiện force-logout qua socket:', err);
+      }
+    }
+
+    res.json({ success: true, message: 'Cập nhật trạng thái người dùng thành công', user: {
+      id: user._id,
+      name: user.name,
+      email: user.email,
+      isActive: user.isActive
+    }});
+  } catch (error) {
+    console.error('Lỗi khi đổi trạng thái người dùng:', error);
+    res.status(500).json({ success: false, message: 'Lỗi hệ thống khi cập nhật trạng thái người dùng' });
   }
 });
 // [CUSTOMER] Lấy danh sách đơn hàng cá nhân

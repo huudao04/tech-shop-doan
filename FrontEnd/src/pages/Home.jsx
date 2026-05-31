@@ -341,7 +341,7 @@ const Home = () => {
               {brands.map((brand) => (
                 <Tag 
                   key={brand._id} 
-                  color="blue" 
+                  color="green" 
                   style={{ 
                     padding: '8px 20px', 
                     fontSize: '15px', 

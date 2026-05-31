@@ -9,6 +9,7 @@
 html, body, #root {
   height: 100%;
   margin: 0;
+  font-family: "Times New Roman", Times, serif;
   background: var(--bg-soft-emerald);
   color: var(--text-default);
   -webkit-font-smoothing: antialiased;
@@ -25,12 +26,16 @@ html, body, #root {
   color: var(--text-on-primary) !important;
 }
 
-/* Button color rules
-   - Primary buttons keep white text on primary background
-   - Default/white-background buttons use the primary emerald color for their text
-*/
-.ant-btn {
-  color: var(--text-default);
+.ant-btn:not(.ant-btn-default) {
+  /* Mặc định: chữ trên các nút (trừ các nút có nền trắng) hiển thị màu trắng */
+  color: var(--text-on-primary) !important;
+}
+
+/* Áp màu cho phần tử con bên trong nút (icon, span, text) để tránh bị ghi đè */
+.ant-btn:not(.ant-btn-default) > *,
+.ant-btn:not(.ant-btn-default) span,
+.ant-btn:not(.ant-btn-default) .anticon {
+  color: var(--text-on-primary) !important;
 }
 
 .ant-btn-primary {
@@ -94,5 +99,16 @@ html, body, #root {
   100% {
     background-position: 0% 50%;
   }
+}
+
+/* Ensure search input's button/text/icon use white on primary background */
+.ant-input-search .ant-input-search-button,
+.ant-input-search .ant-input-search-button .anticon,
+.ant-input-search .ant-btn {
+  color: var(--text-on-primary) !important;
+}
+.ant-input-search .ant-input-search-button {
+  background-color: var(--color-primary) !important;
+  border-color: var(--color-primary) !important;
 }
 
