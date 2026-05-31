@@ -1,4 +1,5 @@
 import { createBrowserRouter } from 'react-router-dom';
+import RootLayout from '../layouts/RootLayout';
 import UserLayout from '../layouts/UserLayout';
 import AdminLayout from '../layouts/AdminLayout';
 import AdminDashboard from '../pages/AdminDashboard.jsx';
@@ -19,40 +20,45 @@ import UserOrders from '../pages/UserOrders';
 import ResetPassword from '../pages/ResetPassword.jsx';
 export const router = createBrowserRouter([
   {
-    path: '/login',
-    element: <Login />
-  },
-  {
-    path: '/reset-password',
-    element: <ResetPassword />
-  },
-  {
-    path: '/',
-    element: <UserLayout />,
+    element: <RootLayout />,
     children: [
-      { index: true, element: <Home /> },
-      { path: 'products', element: <Products /> },
-      { path: 'product/:_id', element: <ProductDetail /> },
-      { path: 'cart', element: <Cart /> },
-      { path: 'cart/checkout', element: <Checkout /> },
-      { path: 'profile', element: <Profile /> },
-      { path: 'my-orders', element: <UserOrders /> }
+      {
+        path: '/login',
+        element: <Login />
+      },
+      {
+        path: '/reset-password',
+        element: <ResetPassword />
+      },
+      {
+        path: '/',
+        element: <UserLayout />,
+        children: [
+          { index: true, element: <Home /> },
+          { path: 'products', element: <Products /> },
+          { path: 'product/:_id', element: <ProductDetail /> },
+          { path: 'cart', element: <Cart /> },
+          { path: 'cart/checkout', element: <Checkout /> },
+          { path: 'profile', element: <Profile /> },
+          { path: 'my-orders', element: <UserOrders /> }
+        ],
+      },
+      {
+        path: '/admin',
+        element: (
+          <ProtectedRoute>
+            <AdminLayout />
+          </ProtectedRoute>
+        ),
+        children: [
+          { index: true, element: <AdminDashboard /> },
+          { path: 'products', element: <AdminProducts /> },
+          { path: 'orders', element: <AdminOrders /> },
+          { path: 'reports', element: <AdminReports /> },
+          { path: 'reviews', element: <AdminReviews /> },
+          { path: 'users', element: <AdminUsers /> }
+        ],
+      }
     ],
-  },
-  {
-    path: '/admin',
-    element: (
-      <ProtectedRoute>
-        <AdminLayout />
-      </ProtectedRoute>
-    ),
-    children: [
-      { index: true, element: <AdminDashboard /> },
-      { path: 'products', element: <AdminProducts /> },
-      { path: 'orders', element: <AdminOrders /> },
-      { path: 'reports', element: <AdminReports /> },
-      { path: 'reviews', element: <AdminReviews /> },
-      { path: 'users', element: <AdminUsers /> }
-    ],
-  },
+  }
 ]);
