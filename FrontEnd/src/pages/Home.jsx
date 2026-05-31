@@ -6,7 +6,13 @@ import {
   CustomerServiceOutlined, 
   FireOutlined, 
   AppstoreOutlined, 
-  GiftOutlined 
+  GiftOutlined,
+  LaptopOutlined,
+  MobileOutlined,
+  TabletOutlined,
+  ToolOutlined,
+  DesktopOutlined,
+  AppstoreAddOutlined 
 } from '@ant-design/icons';
 import ProductCard from '../components/ProductCard';
 import {useNavigate} from 'react-router-dom';
@@ -31,16 +37,50 @@ const Home = () => {
     API.get('/api/brands').then(res => setBrands(res.data));
   }, []);
 
-  // Danh mục icons hỗ trợ hiển thị đẹp mắt cho Tech-shop
-  const getCategoryIcon = (slug) => {
-    switch (slug) {
-      case 'laptop': return '💻';
-      case 'phone': case 'dien-thoai': return '📱';
-      case 'keyboard': case 'ban-phim': return '⌨️';
-      case 'mouse': case 'chuot': return '🖱️';
-      case 'headphone': case 'tai-nghe': return '🎧';
-      default: return '🎮';
+  // Danh mục icons hiển thị theo slug hoặc tên danh mục từ API
+  const getCategoryIcon = (slug = '', name = '') => {
+    const value = `${slug} ${name}`.toLowerCase();
+
+    if (value.includes('laptop') || value.includes('máy tính xách tay') || value.includes('may tinh xach tay')) {
+      return <LaptopOutlined />;
     }
+
+    if (
+      value.includes('tablet') ||
+      value.includes('may tinh bang') ||
+      value.includes('máy tính bảng')
+    ) {
+      return <TabletOutlined />;
+    }
+
+    if (
+      value.includes('phone') ||
+      value.includes('smartphone') ||
+      value.includes('dien-thoai') ||
+      value.includes('điện thoại')
+    ) {
+      return <MobileOutlined />;
+    }
+
+    if (
+      value.includes('accessories') ||
+      value.includes('phu kien') ||
+      value.includes('phụ kiện') ||
+      value.includes('phukien')
+    ) {
+      return <ToolOutlined />;
+    }
+
+    if (
+      value.includes('desktop') ||
+      value.includes('pc') ||
+      value.includes('may tinh') ||
+      value.includes('máy tính')
+    ) {
+      return <DesktopOutlined />;
+    }
+
+    return <AppstoreAddOutlined />;
   };
 
   return (
@@ -133,8 +173,8 @@ const Home = () => {
                     style={{ borderRadius: '8px', transition: '0.3s' }}
                     onClick={() => navigate(`/products?category=${encodeURIComponent(cat.name)}`)}
                   >
-                    <div style={{ fontSize: '32px', marginBottom: '8px' }}>
-                      {getCategoryIcon(cat.slug)}
+                    <div style={{ fontSize: '32px', marginBottom: '8px', color: '#1677ff' }}>
+                      {getCategoryIcon(cat.slug, cat.name)}
                     </div>
                     <Text strong style={{ display: 'block', textTransform: 'capitalize' }}>{cat.name}</Text>
                   </Card>
