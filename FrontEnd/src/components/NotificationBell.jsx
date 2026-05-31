@@ -34,8 +34,8 @@ const NotificationBell = ({
                   padding: '10px 12px',
                   marginBottom: 8,
                   borderRadius: 10,
-                  background: item.isRead ? '#fff' : '#f6ffed',
-                  border: '1px solid #f0f0f0',
+                  background: item.isRead ? 'transparent' : 'var(--bg-soft-emerald)',
+                  border: '1px solid rgba(255,255,255,0.08)',
                 }}
               >
                 <Space direction="vertical" size={2} style={{ width: '100%' }}>
@@ -43,12 +43,12 @@ const NotificationBell = ({
                     <Text strong style={{ fontSize: 13 }}>
                       {item.title}
                     </Text>
-                    {!item.isRead && <CheckOutlined style={{ color: '#1677ff' }} />}
+                    {!item.isRead && <CheckOutlined style={{ color: 'var(--accent-lapis-blue)' }} />}
                   </Space>
-                  <Paragraph ellipsis={{ rows: 2 }} style={{ marginBottom: 0, color: '#555' }}>
+                  <Paragraph ellipsis={{ rows: 2 }} style={{ marginBottom: 0, color: 'var(--text-default)' }}>
                     {item.message}
                   </Paragraph>
-                  <Text type="secondary" style={{ fontSize: 12 }}>
+                  <Text type="secondary" style={{ fontSize: 12, color: 'rgba(11,43,35,0.7)' }}>
                     {new Date(item.createdAt).toLocaleString('vi-VN')}
                   </Text>
                 </Space>
@@ -63,7 +63,7 @@ const NotificationBell = ({
   return (
     <Popover content={content} trigger="click" placement="bottomRight" arrow={false}>
       <Badge count={unreadCount} overflowCount={99} size="small">
-        <Button type="text" icon={<BellOutlined style={{ fontSize: 20 }} />} />
+        <Button type="text" icon={<BellOutlined style={{ fontSize: 20, color: 'var(--text-on-primary)' }} />} />
       </Badge>
     </Popover>
   );

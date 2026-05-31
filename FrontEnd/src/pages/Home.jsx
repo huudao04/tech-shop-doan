@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Row, Col, Typography, Carousel, Card, Avatar, Space, Tabs, Badge, Tag } from 'antd';
 import { 
   RocketOutlined, 
@@ -20,16 +20,70 @@ import API from '../utils/axiosClient';
 
 const { Title, Text } = Typography;
 
+// Full-width image banner carousel with short pill selector
+const BannerCarousel = () => {
+  const carouselRef = useRef(null);
+  const [index, setIndex] = useState(0);
+
+  const banners = [
+    '/images/Gemini_Generated_Image_mrf1hcmrf1hcmrf1.png',
+    '/images/Gemini_Generated_Image_mrf1hcmrf1hcmrf1 (1).png',
+    '/images/Gemini_Generated_Image_4fsj854fsj854fsj.png',
+    '/images/Gemini_Generated_Image_4fsj854fsj854fsj (1).png'
+  ];
+
+  return (
+    <div style={{ width: '100%', overflow: 'visible', position: 'relative' }}>
+      <Carousel
+        ref={carouselRef}
+        autoplay
+        autoplaySpeed={10000}
+        afterChange={(i) => setIndex(i)}
+        effect="fade"
+        dots={false}
+        style={{ width: '80%', margin: '0 auto', borderRadius: '0', overflow: 'hidden' }}
+      >
+        {banners.map((src, i) => (
+          <div key={i}>
+              <img
+                src={src}
+                alt={`banner-${i}`}
+                style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+              />
+          </div>
+        ))}
+      </Carousel>
+
+      <div style={{ position: 'absolute', left: '50%', transform: 'translateX(-50%)', bottom: -16, display: 'flex', justifyContent: 'center', gap: 10, zIndex: 20 }}>
+        {banners.map((_, i) => (
+          <div
+            key={i}
+            onClick={() => carouselRef.current && carouselRef.current.goTo(i)}
+            style={{
+              width: 48,
+              height: 8,
+              borderRadius: 6,
+              cursor: 'pointer',
+              background: index === i ? '#1677ff' : '#d9d9d9',
+              boxShadow: index === i ? '0 4px 12px rgba(22,119,255,0.12)' : 'none',
+              transition: 'all 0.25s'
+            }}
+          />
+        ))}
+      </div>
+    </div>
+  );
+};
+
 const Home = () => {
   const navigate = useNavigate();
   const [products, setProducts] = useState([]);
-  const [hotDeals, setHotDeals] = useState([]);       
+  const [hotDeals, setHotDeals] = useState([]);
   const [newArrivals, setNewArrivals] = useState([]);
   const [categories, setCategories] = useState([]);
   const [brands, setBrands] = useState([]);
 
   useEffect(() => {
-    // Tải đồng thời Sản phẩm, Danh mục và Thương hiệu từ API server.js
     API.get('/api/products?sort=sold&limit=4').then(res => setHotDeals(res.data));
     API.get('/api/products?sort=newest&limit=4').then(res => setNewArrivals(res.data));
     API.get('/api/products').then(res => setProducts(res.data));
@@ -37,7 +91,6 @@ const Home = () => {
     API.get('/api/brands').then(res => setBrands(res.data));
   }, []);
 
-  // Danh mục icons hiển thị theo slug hoặc tên danh mục từ API
   const getCategoryIcon = (slug = '', name = '') => {
     const value = `${slug} ${name}`.toLowerCase();
 
@@ -85,47 +138,14 @@ const Home = () => {
 
   return (
     <div style={{ backgroundColor: '#f5f7fa', paddingBottom: '50px' }}>
-      
-      {/* 1. SECTION BANNER SLIDER (CAROUSEL) */}
-      <div style={{ marginBottom: '40px', background: '#fff' }}>
-        <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '15px 0' }}>
-          <Carousel autoplay effect="fade" style={{ borderRadius: '12px', overflow: 'hidden' }}>
-            <div>
-              <div style={{ 
-                height: '380px', 
-                background: 'linear-gradient(135deg, #111 0%, #333 100%)', 
-                color: '#fff', 
-                display: 'flex', 
-                flexDirection: 'column', 
-                justifyContent: 'center', 
-                padding: '0 60px' 
-              }}>
-                <Tag color="red" style={{ width: 'fit-content', marginBottom: '15px' }}>BIG SALE 2026</Tag>
-                <Title level={1} style={{ color: '#fff', margin: 0, fontSize: '38px' }}>SIÊU PHẨM CÔNG NGHỆ MỚI</Title>
-                <Text style={{ color: '#aaa', fontSize: '18px', marginTop: '10px' }}>Giảm giá lên đến 30% cho toàn bộ phụ kiện Gaming Gear cao cấp.</Text>
-              </div>
-            </div>
-            <div>
-              <div style={{ 
-                height: '380px', 
-                background: 'linear-gradient(135deg, #1677ff 0%, #003a8c 100%)', 
-                color: '#fff', 
-                display: 'flex', 
-                flexDirection: 'column', 
-                justifyContent: 'center', 
-                padding: '0 60px' 
-              }}>
-                <Tag color="gold" style={{ width: 'fit-content', marginBottom: '15px' }}>HOT TREND</Tag>
-                <Title level={1} style={{ color: '#fff', margin: 0, fontSize: '38px' }}>LAPTOP WORKSTATION THẾ HỆ MỚI</Title>
-                <Text style={{ color: '#e6f7ff', fontSize: '18px', marginTop: '10px' }}>Trả góp 0% lãi suất - Tặng kèm gói bảo hành vàng 2 năm.</Text>
-              </div>
-            </div>
-          </Carousel>
-        </div>
+
+      {/* full-width banner */}
+      <div style={{ marginBottom: '40px' }}>
+        <BannerCarousel />
       </div>
 
       <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '0 15px' }}>
-        
+
         {/* 2. SECTION CAM KẾT DỊCH VỤ (SHOPPING ADVANTAGES) */}
         <Row gutter={[16, 16]} style={{ marginBottom: '40px' }}>
           <Col xs={24} md={8}>

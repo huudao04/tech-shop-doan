@@ -48,7 +48,7 @@ const UserLayout = () => {
   const supportData = [
     { text: 'Hotline: 1900 1234', link: '/support/how-to-buy' },
     { text: 'Email: support@techshop.com', link: '/support/faq' },
-    { text: 'Địa chỉ: 123 Đường ABC, Quận XYZ, TP.Thái Nguyên', link: '/support/technical' },
+    { text: 'Hướng dẫn mua hàng', link: '/support/how-to-buy' },
   ]; 
 
   const getSelectedMenuKey = () => {
@@ -233,9 +233,9 @@ const UserLayout = () => {
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
-      <Header style={{ display: 'flex', alignItems: 'center', background: '#fff', padding: '0 50px', boxShadow: '0 2px 8px #f0f1f2', position: 'sticky', top: 0, zIndex: 1000 }}>
+      <Header className="gradient-header-footer" style={{ display: 'flex', alignItems: 'center', padding: '0 50px', boxShadow: '0 2px 8px rgba(0, 0, 0, 0.15)', position: 'sticky', top: 0, zIndex: 1000 }}>
         <Link to="/">
-          <div className="logo" style={{ fontWeight: 'bold', fontSize: '20px', marginRight: '40px', color: '#1677ff' }}>TECH-SHOP</div>
+          <div className="logo" style={{ fontWeight: 'bold', fontSize: '20px', marginRight: '40px' }}>TECH-SHOP</div>
         </Link>
         <Menu mode="horizontal" selectedKeys={getSelectedMenuKey()} style={{ flex: 1, borderBottom: 'none' }}>
           <Menu.Item key="1"><Link to="/">Trang chủ</Link></Menu.Item>
@@ -313,7 +313,7 @@ const UserLayout = () => {
         </div>
       </Content>
 
-      <Footer style={{ background: '#141414', color: 'rgba(255, 255, 255, 0.65)', padding: '50px 50px 20px 50px', fontSize: '14px' }}>
+      <Footer className="gradient-header-footer" style={{ padding: '50px 50px 20px 50px', fontSize: '14px' }}>
         <Row gutter={[32, 32]} justify="space-between">
           
           {/* Cột 1: Giới thiệu về Website (Giữ nguyên) */}

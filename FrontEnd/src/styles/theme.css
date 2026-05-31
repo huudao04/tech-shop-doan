@@ -1,0 +1,98 @@
+:root {
+  --color-primary: #047857;
+  --bg-soft-emerald: #E6F6EF;
+  --accent-lapis-blue: #266AB3;
+  --text-on-primary: #FFFFFF; 
+  --text-default: #0b2b23; 
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  background: var(--bg-soft-emerald);
+  color: var(--text-default);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Basic Ant Design overrides: default text should be dark on light bg */
+.ant-typography, .ant-list-item, .ant-empty-description {
+  color: var(--text-default);
+}
+
+/* Utility class for white text on colored/primary backgrounds */
+.on-primary, .text-on-primary {
+  color: var(--text-on-primary) !important;
+}
+
+/* Button color rules
+   - Primary buttons keep white text on primary background
+   - Default/white-background buttons use the primary emerald color for their text
+*/
+.ant-btn {
+  color: var(--text-default);
+}
+
+.ant-btn-primary {
+  color: var(--text-on-primary) !important;
+  background-color: var(--color-primary) !important;
+  border-color: var(--color-primary) !important;
+}
+
+/* Ant Design default buttons typically have a white background */
+.ant-btn-default {
+  color: var(--color-primary) !important;
+}
+
+/* Catch inline-styled white backgrounds (best-effort) */
+.ant-btn[style*="background: #fff"],
+.ant-btn[style*="background:#fff"],
+.ant-btn[style*="background: white"],
+.ant-btn[style*="background:white"] {
+  color: var(--color-primary) !important;
+}
+
+/* Utility class to mark a white button explicitly */
+.btn-white {
+  background: #fff;
+  color: var(--color-primary) !important;
+  border: 1px solid rgba(0,0,0,0.06);
+}
+
+.gradient-header-footer {
+  background: linear-gradient(90deg, #22c55e 0%, #10b981 50%, #22c55e 100%);
+  background-size: 200% 100%;
+  animation: gradient-slide-horizontal 6s ease-in-out infinite;
+  text-align: center;
+}
+
+.gradient-header-footer,
+.gradient-header-footer * {
+  color: #fff !important;
+  font-weight: 700;
+}
+
+.gradient-header-footer .ant-menu {
+  background: transparent !important;
+  border-bottom: none !important;
+}
+
+/* Keep search input content readable on its light background */
+.gradient-header-footer .ant-input,
+.gradient-header-footer .ant-input::placeholder {
+  color: #0b2b23 !important;
+  font-weight: 500 !important;
+}
+
+@keyframes gradient-slide-horizontal {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
