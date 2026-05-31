@@ -15,6 +15,7 @@ const ProductDetail = () => {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [quantity, setQuantity] = useState(1);
+  const [activeImageIndex, setActiveImageIndex] = useState(0);
   const { _id } = useParams(); 
   const navigate = useNavigate();
   const [form] = Form.useForm();
@@ -32,6 +33,15 @@ const ProductDetail = () => {
 
   // State phục vụ tính năng trao đổi thảo luận qua lại
   const [replyInputs, setReplyInputs] = useState({}); // Lưu text nhập tạm thời cho từng ReviewId
+
+  const productImages = React.useMemo(() => {
+    if (!product?.image) return [];
+
+    const images = Array.isArray(product.image) ? product.image : [product.image];
+    return images
+      .map((image) => getImageUrl(image, ''))
+      .filter((image) => Boolean(image));
+  }, [product]);
 
   const fetchProductAndReviews = () => {
     setLoading(true);
@@ -53,6 +63,20 @@ const ProductDetail = () => {
   useEffect(() => {
     fetchProductAndReviews();
   }, [_id]);
+
+  useEffect(() => {
+    setActiveImageIndex(0);
+  }, [_id, product?.image]);
+
+  useEffect(() => {
+    if (productImages.length <= 1) return undefined;
+
+    const timer = setInterval(() => {
+      setActiveImageIndex((currentIndex) => (currentIndex + 1) % productImages.length);
+    }, 3500);
+
+    return () => clearInterval(timer);
+  }, [productImages]);
 
   useEffect(() => {
     if (location.hash === '#reviews-section') {
@@ -181,7 +205,45 @@ const ProductDetail = () => {
       <Card style={{ marginBottom: 24 }} className="shadow-sm">
         <Row gutter={[40, 32]}>
           <Col xs={24} md={12} style={{ textAlign: 'center' }}>
-            <img src={getImageUrl(product.image, 'https://via.placeholder.com/350')} alt={product.name} style={{ maxWidth: '100%', maxHeight: 350, objectFit: 'contain' }} />
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+              <div style={{ width: '100%', minHeight: 350, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fafafa', borderRadius: 12, overflow: 'hidden' }}>
+                <img
+                  src={productImages[activeImageIndex] || getImageUrl(product.image, 'https://via.placeholder.com/350')}
+                  alt={product.name}
+                  style={{ width: '100%', maxHeight: 350, objectFit: 'contain', padding: 12 }}
+                />
+              </div>
+
+              {productImages.length > 1 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 8 }}>
+                  {productImages.map((imageUrl, index) => (
+                    <button
+                      key={`${imageUrl}-${index}`}
+                      type="button"
+                      onClick={() => setActiveImageIndex(index)}
+                      style={{
+                        width: 68,
+                        height: 68,
+                        padding: 4,
+                        borderRadius: 10,
+                        border: index === activeImageIndex ? '2px solid #1677ff' : '1px solid #d9d9d9',
+                        background: '#fff',
+                        cursor: 'pointer',
+                        overflow: 'hidden',
+                        boxShadow: index === activeImageIndex ? '0 4px 12px rgba(22, 119, 255, 0.15)' : 'none',
+                      }}
+                      aria-label={`Xem ảnh ${index + 1}`}
+                    >
+                      <img
+                        src={imageUrl}
+                        alt={`${product.name} ${index + 1}`}
+                        style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 8 }}
+                      />
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </Col>
           <Col xs={24} md={12}>
             <Space style={{ marginBottom: 10 }}><Tag color="blue">{product.brand}</Tag><Tag color="green">{product.category}</Tag></Space>
