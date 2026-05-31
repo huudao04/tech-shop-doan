@@ -3,6 +3,7 @@ import { Table, Button, InputNumber, Space, Typography, Empty, Row, Col, Card, m
 import { DeleteOutlined, ShoppingCartOutlined } from '@ant-design/icons';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom'; // Thêm useNavigate để truyền dữ liệu ngầm
 import { useCart } from '../context/CartContex.jsx';
+import { getImageUrl } from '../utils/imageUrl.js';
 
 const { Title, Text } = Typography;
 
@@ -14,8 +15,6 @@ const Cart = () => {
 
   const navigate = useNavigate(); // Khai báo hook điều hướng trang
 
-  const getImageSource = (image) => Array.isArray(image) ? image[0] : image;
-  
   // Tự động tích chọn TẤT CẢ sản phẩm khi người dùng vừa vào trang giỏ hàng
   useEffect(() => {
     if (cartItems.length > 0 && !isInitialized) {
@@ -116,7 +115,7 @@ const Cart = () => {
       render: (text, record) => (
         <Space>
           <img 
-            src={getImageSource(record.image) ? `/images/${getImageSource(record.image)}` : 'https://via.placeholder.com/50'} 
+            src={getImageUrl(record.image, 'https://via.placeholder.com/50')} 
             alt={text} 
             style={{ width: 50 }} 
             onError={(e) => { e.target.src = 'https://via.placeholder.com/50'; }}

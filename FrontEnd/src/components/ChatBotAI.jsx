@@ -3,26 +3,13 @@ import { FloatButton, Popover, Input, Button, Typography, Card, Tag, message } f
 import { RobotOutlined, SendOutlined, EllipsisOutlined, ShoppingOutlined, FileTextOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import API from '../utils/axiosClient';
+import { getImageUrl } from '../utils/imageUrl.js';
 
 const { Text } = Typography;
 
 const DEFAULT_MESSAGES = [
   { role: 'ai', content: 'Chào bạn! Tech-Shop có thể giúp gì cho bạn hôm nay?' }
 ];
-
-const normalizeImageUrl = (image) => {
-  if (!image) return '';
-  if (Array.isArray(image)) {
-    const firstImage = image[0];
-    if (!firstImage) return '';
-    if (firstImage.startsWith('http')) return firstImage;
-    if (firstImage.startsWith('/')) return firstImage;
-    return `/images/${firstImage}`;
-  }
-  if (image.startsWith('http')) return image;
-  if (image.startsWith('/')) return image;
-  return `/images/${image}`;
-};
 
 const ChatAI = () => {
   const navigate = useNavigate();
@@ -95,7 +82,7 @@ const ChatAI = () => {
   };
 
   const renderProductCard = (product) => {
-    const imageUrl = normalizeImageUrl(product.image);
+    const imageUrl = getImageUrl(product.image);
 
     return (
       <Card

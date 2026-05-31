@@ -3,6 +3,7 @@ import { Card, Button, Typography, Space, message, Tag } from 'antd';
 import { ShoppingCartOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { useCart } from '../context/CartContex.jsx';
+import { getImageUrl } from '../utils/imageUrl.js';
 
 const { Text, Title } = Typography;
 
@@ -46,7 +47,7 @@ const ProductCard = ({ name, price, image, category, brand, id }) => {
         }}>
           <img 
             alt={name} 
-            src={`/images/${image}`} 
+            src={getImageUrl(image, 'https://via.placeholder.com/200')} 
             style={{ 
               maxHeight: '100%',  
               maxWidth: '100%',  

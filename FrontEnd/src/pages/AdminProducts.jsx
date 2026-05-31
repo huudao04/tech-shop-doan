@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Table, Button, Typography, Modal, Form, Input, InputNumber, Select, message, Space, Upload, Popconfirm, Card } from 'antd';
 import { PlusOutlined, DeleteOutlined, EditOutlined, SearchOutlined } from '@ant-design/icons';
 import API from '../utils/axiosClient';
+import { getImageUrl } from '../utils/imageUrl.js';
 
 const { Title } = Typography;
 
@@ -82,7 +83,7 @@ const AdminProducts = () => {
         uid: index.toString(),
         name: imgName,
         status: 'done',
-        url: imgName.startsWith('http') ? imgName : `/images/${imgName}`,
+        url: getImageUrl(imgName),
         response: { fileName: imgName } // Lưu lại tên file để nhận diện khi submit
       }));
       setFileList(formattedFiles);
@@ -165,7 +166,7 @@ const AdminProducts = () => {
         return (
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <img 
-              src={mainImage?.startsWith('http') ? mainImage : `/images/${mainImage}`}  
+              src={getImageUrl(mainImage, '/images/default-product.jpg')}  
               style={{ maxHeight: '40px', maxWidth: '40px', objectFit: 'contain' }}  
               alt={record.name}
             />

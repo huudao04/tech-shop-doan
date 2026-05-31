@@ -4,6 +4,7 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { Row, Col, Typography, Button, Tag, InputNumber, Divider, message, Space, Spin, Rate, Card, Form, Input, List, Avatar, Popconfirm, Modal } from 'antd';
 import { ShoppingCartOutlined, ThunderboltOutlined, ArrowLeftOutlined, UserOutlined, MessageOutlined, EditOutlined, DeleteOutlined, CommentOutlined } from '@ant-design/icons';
 import { useCart } from '../context/CartContex.jsx';
+import { getImageUrl } from '../utils/imageUrl.js';
 
 const { Title, Text, Paragraph } = Typography;
 const { TextArea } = Input;
@@ -180,7 +181,7 @@ const ProductDetail = () => {
       <Card style={{ marginBottom: 24 }} className="shadow-sm">
         <Row gutter={[40, 32]}>
           <Col xs={24} md={12} style={{ textAlign: 'center' }}>
-            <img src={`/images/${Array.isArray(product.image) ? product.image[0] : product.image}`} alt={product.name} style={{ maxWidth: '100%', maxHeight: 350, objectFit: 'contain' }} />
+            <img src={getImageUrl(product.image, 'https://via.placeholder.com/350')} alt={product.name} style={{ maxWidth: '100%', maxHeight: 350, objectFit: 'contain' }} />
           </Col>
           <Col xs={24} md={12}>
             <Space style={{ marginBottom: 10 }}><Tag color="blue">{product.brand}</Tag><Tag color="green">{product.category}</Tag></Space>

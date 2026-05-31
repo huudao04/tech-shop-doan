@@ -4,6 +4,7 @@ import { ShoppingCartOutlined, EyeOutlined, FilterOutlined } from '@ant-design/i
 import { Link, useLocation } from 'react-router-dom';
 import API from '../utils/axiosClient';
 import { useCart } from '../context/CartContex.jsx';
+import { getImageUrl } from '../utils/imageUrl.js';
 
 const { Title, Text } = Typography;
 
@@ -240,9 +241,7 @@ const Products = () => {
                       <Link to={`/product/${product._id}`}>
                         <img
                           alt={product.name}
-                          src={product.image && product.image[0] 
-                            ? (product.image[0].startsWith('http') ? product.image[0] : `/images/${product.image[0]}`)
-                            : '/images/default-product.jpg'}
+                          src={getImageUrl(product.image, '/images/default-product.jpg') || '/images/default-product.jpg'}
                           style={{ height: 180, width: '100%', objectFit: 'contain', padding: 8, background: '#f9f9f9' }}
                         />
                       </Link>
@@ -268,11 +267,12 @@ const Products = () => {
                       </div>
                     </div>
 
-                    <Space size="middle" style={{ width: '100%', justifyContent: 'space-between', marginTop: 'auto' }}>
+                    <Space size="middle" style={{ width: '100%', justifyContent: 'space-between', marginTop: 'auto', gap: 8 }}>
                       <Link to={`/product/${product._id}`}>
                         <Button icon={<EyeOutlined />}>Chi tiết</Button>
                       </Link>
                       <Button 
+                        style={{ width: '100px' }}
                         type="primary" 
                         icon={<ShoppingCartOutlined />} 
                         disabled={product.stock <= 0}

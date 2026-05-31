@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Table, Button, Rate, Space, Avatar, message, Popconfirm, Card, Typography, Modal, Form, Input, Select, DatePicker } from 'antd';
 import { DeleteOutlined, CommentOutlined, PlusOutlined, EditOutlined, SearchOutlined } from '@ant-design/icons';
 import API from '../utils/axiosClient';
+import { getImageUrl } from '../utils/imageUrl.js';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -179,7 +180,7 @@ const handleReplySubmit = async () => {
         return (
           <Space>
             <Avatar 
-              src={`/images/${productId.image?.[0] || productId.image}`} 
+              src={getImageUrl(productId.image, 'https://via.placeholder.com/40')} 
               shape="square" 
               size={40} 
               alt={productId.name}

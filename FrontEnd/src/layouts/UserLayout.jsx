@@ -14,6 +14,7 @@ import NotificationBell from '../components/NotificationBell.jsx';
 import { useCart } from '../context/CartContex.jsx';
 import API from '../utils/axiosClient';
 import { io } from 'socket.io-client';
+import { getImageUrl } from '../utils/imageUrl.js';
 
 const { Header, Content, Footer } = Layout;
 
@@ -73,12 +74,7 @@ const UserLayout = () => {
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '4px 0' }}>
                 {/* Ảnh sản phẩm nhỏ bên trái dropdown */}
                 <img 
-                  src={(() => {
-                    const imageName = Array.isArray(prod.image) ? prod.image[0] : prod.image;
-                    return imageName
-                      ? (imageName.startsWith('http') ? imageName : `/images/${imageName}`)
-                      : 'https://via.placeholder.com/40';
-                  })()} 
+                  src={getImageUrl(prod.image, 'https://via.placeholder.com/40')} 
                   alt={prod.name}
                   style={{ width: '40px', height: '40px', objectFit: 'cover', borderRadius: '4px', border: '1px solid #f0f0f0' }}
                   onError={(e) => { e.currentTarget.src = 'https://via.placeholder.com/40'; }} // Fallback nếu lỗi ảnh
