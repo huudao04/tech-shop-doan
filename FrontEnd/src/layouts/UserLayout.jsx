@@ -366,7 +366,7 @@ const UserLayout = () => {
               <a href="https://facebook.com" target="_blank" rel="noreferrer" style={{ color: '#1890ff', fontSize: '24px' }}><FacebookOutlined /></a>
               <a href="https://youtube.com" target="_blank" rel="noreferrer" style={{ color: '#ff4d4f', fontSize: '24px' }}><YoutubeOutlined /></a>
               <a href="https://instagram.com" target="_blank" rel="noreferrer" style={{ color: '#ff4d4f', fontSize: '24px' }}><InstagramOutlined /></a>
-              <a href="#" style={{ color: '#52c41a', fontSize: '24px' }}><GlobalOutlined /></a>
+              <a href="/" style={{ color: '#52c41a', fontSize: '24px' }}><GlobalOutlined /></a>
             </Space>
             <List
               split={false}

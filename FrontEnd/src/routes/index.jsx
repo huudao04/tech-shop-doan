@@ -18,6 +18,14 @@ import ProtectedRoute from '../components/ProtectedRoute';
 import Profile from '../pages/Profile';
 import UserOrders from '../pages/UserOrders';
 import ResetPassword from '../pages/ResetPassword.jsx';
+import PolicyWarranty from '../pages/inforStatic/PolicyWarranty.jsx';
+import PolicyReturn from '../pages/inforStatic/PolicyReturn.jsx';
+import PolicyShipping from '../pages/inforStatic/PolicyShipping.jsx';
+import PolicyPrivacy from '../pages/inforStatic/PolicyPrivacy.jsx';
+import ServiceRepair from '../pages/inforStatic/ServiceRepair.jsx';
+import ServiceInstallment from '../pages/inforStatic/ServiceInstallment.jsx';
+import TechNews from '../pages/inforStatic/TechNews.jsx';
+import BusinessContact from '../pages/inforStatic/BusinessContact.jsx';
 export const router = createBrowserRouter([
   {
     element: <RootLayout />,
@@ -40,7 +48,15 @@ export const router = createBrowserRouter([
           { path: 'cart', element: <Cart /> },
           { path: 'cart/checkout', element: <Checkout /> },
           { path: 'profile', element: <Profile /> },
-          { path: 'my-orders', element: <UserOrders /> }
+          { path: 'my-orders', element: <UserOrders /> },
+          { path: 'policy/warranty', element: <PolicyWarranty /> },
+          { path: 'policy/return', element: <PolicyReturn /> },
+          { path: 'policy/shipping', element: <PolicyShipping /> },
+          { path: 'policy/privacy', element: <PolicyPrivacy /> },
+          { path: 'services/repair', element: <ServiceRepair /> },
+          { path: 'services/installment', element: <ServiceInstallment /> },
+          { path: 'news', element: <TechNews /> },
+          { path: 'contact', element: <BusinessContact /> }
         ],
       },
       {
