@@ -65,8 +65,8 @@ html, body, #root {
 }
 
 .gradient-header-footer {
-  background: linear-gradient(90deg, #22c55e 0%, #10b981 50%, #22c55e 100%);
-  background-size: 200% 100%;
+  background: linear-gradient(90deg, #022c22 0%, #064e3b 35%, #10b981 100%);
+  background-size: 100% 100%;
   animation: gradient-slide-horizontal 6s ease-in-out infinite;
   text-align: center;
 }
@@ -75,6 +75,23 @@ html, body, #root {
 .gradient-header-footer * {
   color: #fff !important;
   font-weight: 700;
+}
+
+/* Logo image sizing and responsiveness */
+.site-logo-img {
+  width: 140px;
+  height: auto;
+  object-fit: contain;
+  display: inline-block;
+}
+
+.footer-logo {
+  width: 160px;
+}
+
+@media (max-width: 768px) {
+  .site-logo-img { width: 110px; }
+  .footer-logo { width: 120px; }
 }
 
 .gradient-header-footer .ant-menu {

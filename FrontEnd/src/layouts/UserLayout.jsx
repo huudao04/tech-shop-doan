@@ -235,7 +235,7 @@ const UserLayout = () => {
     <Layout style={{ minHeight: '100vh' }}>
       <Header className="gradient-header-footer" style={{ display: 'flex', alignItems: 'center', padding: '0 50px', boxShadow: '0 2px 8px rgba(0, 0, 0, 0.15)', position: 'sticky', top: 0, zIndex: 1000 }}>
         <Link to="/">
-          <div className="logo" style={{ fontWeight: 'bold', fontSize: '20px', marginRight: '40px' }}>TECH-SHOP</div>
+          <img src="/public/logo.png" alt="Tech-Shop Logo" className="site-logo-img" />
         </Link>
         <Menu mode="horizontal" selectedKeys={getSelectedMenuKey()} style={{ flex: 1, borderBottom: 'none' }}>
           <Menu.Item key="1"><Link to="/">Trang chủ</Link></Menu.Item>
@@ -318,7 +318,9 @@ const UserLayout = () => {
           
           {/* Cột 1: Giới thiệu về Website (Giữ nguyên) */}
           <Col xs={24} sm={12} md={6}>
-            <div style={{ fontWeight: 'bold', fontSize: '18px', color: '#fff', marginBottom: '16px' }}>TECH-SHOP</div>
+            <div style={{ marginBottom: '16px' }}>
+               <img src="/public/logo.png" alt="Tech-Shop Logo" className="site-logo-img" />
+            </div>
             <p style={{ color: '#a6a6a6', lineHeight: '1.6' }}>
               TECH-SHOP là hệ thống bán lẻ thiết bị công nghệ chính hãng hàng đầu, cung cấp các sản phẩm điện thoại, máy tính và phụ kiện cao cấp với mức giá cạnh tranh nhất.
             </p>
