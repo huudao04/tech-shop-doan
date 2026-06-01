@@ -461,7 +461,7 @@ const UserLayout = () => {
             {(isMobile ? (
             []
             ) : (
-              <div style={{ textAlign: 'center', marginBottom: '16px' }}>
+              <div style={{ textAlign: 'center', marginBottom: '16px', marginLeft: '80px' }}>
                 <img src="/public/logo.png" alt="Tech-Shop Logo" className="site-logo-img" />
               </div>
             ))}
