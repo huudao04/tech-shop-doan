@@ -16,6 +16,7 @@ const ProductDetail = () => {
   const [submitting, setSubmitting] = useState(false);
   const [quantity, setQuantity] = useState(1);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const { _id } = useParams(); 
   const navigate = useNavigate();
   const [form] = Form.useForm();
@@ -67,6 +68,12 @@ const ProductDetail = () => {
   useEffect(() => {
     setActiveImageIndex(0);
   }, [_id, product?.image]);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   useEffect(() => {
     if (productImages.length <= 1) return undefined;
@@ -277,15 +284,19 @@ const ProductDetail = () => {
                 dataSource={reviews}
                 renderItem={(item) => (
                   <List.Item style={{ padding: '20px 0', alignItems: 'flex-start', display: 'block' }}>
-                    <div style={{ display: 'flex', gap: 12 }}>
-                      <Avatar icon={<UserOutlined />} style={{ backgroundColor: '#87d068' }} />
-                      <div style={{ flex: 1 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <Space><Text strong>{item.name}</Text>{item.userId === currentUser?.id && <Tag color="orange">Đánh giá của bạn</Tag>}</Space>
-                          <Text type="secondary" style={{ fontSize: 11 }}>{new Date(item.createdAt).toLocaleDateString('vi-VN')}</Text>
-                        </div>
-                        <Rate disabled defaultValue={item.rating} style={{ fontSize: 11, display: 'block', margin: '4px 0' }} />
-                        <p style={{ color: '#262626', margin: '6px 0', fontSize: 14 }}>{item.comment}</p>
+                            <div style={{ display: 'flex', gap: 12 }}>
+                              <Avatar size={isMobile ? 30 : 56} icon={<UserOutlined />} style={{ backgroundColor: '#87d068' }} />
+                              <div style={{ flex: 1 }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                                  <Space direction="vertical" size={0}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                      <Text strong style={{ fontSize: isMobile ? 14 : 16 }}>{item.name}</Text>
+                                    </div>
+                                  </Space>
+                                  <Text type="secondary" style={{ fontSize: isMobile ? 11 : 12 }}>{new Date(item.createdAt).toLocaleDateString('vi-VN')}</Text>
+                                </div>
+                                <Rate disabled defaultValue={item.rating} style={{ fontSize: isMobile ? 14 : 11, display: 'block', margin: '6px 0' }} />
+                                <p style={{ color: '#262626', margin: isMobile ? '8px 0' : '6px 0', fontSize: isMobile ? 14 : 14 }}>{item.comment}</p>
 
                         {/* Thanh công cụ hành động: Sửa / Xóa đánh giá dành riêng cho chủ nhân bài viết */}
                         {item.userId === currentUser?.id && (
@@ -299,22 +310,26 @@ const ProductDetail = () => {
 
                         {/* Chuỗi Lịch sử các trao đổi thảo luận con (Discussions) */}
                         {item.discussions && item.discussions.length > 0 && (
-                          <div style={{ background: '#f9f9f9', padding: '10px 12px', borderRadius: 6, marginTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          <div style={{ background: '#f9f9f9', padding: isMobile ? '8px' : '10px 12px', borderRadius: 6, marginTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
                             {item.discussions.map((disc, idx) => (
                               <div key={idx} style={{ borderBottom: idx !== item.discussions.length - 1 ? '1px dashed #e8e8e8' : 'none', paddingBottom: 6 }}>
-                                <Space>
-                                  <Text strong style={{ fontSize: 12 }}>{disc.name}</Text>
-                                  {disc.role === 'admin' ? <Tag color="red" style={{ fontSize: 10 }}>Quản trị viên</Tag> : <Tag color="blue" style={{ fontSize: 10 }}>Khách hàng</Tag>}
-                                  <Text type="secondary" style={{ fontSize: 10 }}>{new Date(disc.createdAt).toLocaleDateString('vi-VN')}</Text>
-                                </Space>
-                                <p style={{ margin: '2px 0 0 0', color: '#434343', fontSize: 13 }}>{disc.comment}</p>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <div>
+                                    <Text strong style={{ fontSize: isMobile ? 13 : 12 }}>{disc.name}</Text>
+                                    <div style={{ marginTop: 4 }}>
+                                      <Tag color={disc.role === 'admin' ? 'red' : 'blue'} style={{ fontSize: isMobile ? 11 : 10 }}>{disc.role === 'admin' ? 'Quản trị viên' : 'Khách hàng'}</Tag>
+                                    </div>
+                                  </div>
+                                  <Text type="secondary" style={{ fontSize: isMobile ? 11 : 10 }}>{new Date(disc.createdAt).toLocaleDateString('vi-VN')}</Text>
+                                </div>
+                                <p style={{ margin: '6px 0 0 0', color: '#434343', fontSize: isMobile ? 14 : 13 }}>{disc.comment}</p>
                               </div>
                             ))}
                           </div>
                         )}
 
                         {/* Khung phản hồi trao đổi tức thì công khai */}
-                        <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                        <div style={{ display: 'flex', gap: 8, marginTop: 10, flexDirection: isMobile ? 'column' : 'row' }}>
                           <Input 
                             placeholder={currentUser ? "Nhập câu hỏi, câu trả lời hoặc thảo luận trao đổi..." : "Vui lòng đăng nhập để phản hồi..."}
                             disabled={!currentUser}
@@ -322,8 +337,9 @@ const ProductDetail = () => {
                             value={replyInputs[item._id] || ''}
                             onChange={(e) => setReplyInputs({ ...replyInputs, [item._id]: e.target.value })}
                             onPressEnter={() => handleSendDiscussion(item._id)}
+                            style={{ width: isMobile ? '100%' : 'auto' }}
                           />
-                          <Button disabled={!currentUser} size="small" type="primary" icon={<CommentOutlined />} onClick={() => handleSendDiscussion(item._id)}>Gửi</Button>
+                          <Button disabled={!currentUser} size="small" type="primary" icon={<CommentOutlined />} onClick={() => handleSendDiscussion(item._id)} block={isMobile}>Gửi</Button>
                         </div>
                       </div>
                     </div>

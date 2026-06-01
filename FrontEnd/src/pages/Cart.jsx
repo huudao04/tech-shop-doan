@@ -9,6 +9,7 @@ const { Title, Text } = Typography;
 
 const Cart = () => {
   const { cartItems, updateCart, cartLoading } = useCart();
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [isInitialized, setIsInitialized] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
   const [selectedRowKeys, setSelectedRowKeys] = useState([]);
@@ -22,6 +23,12 @@ const Cart = () => {
       setIsInitialized(true); 
     }
   }, [cartItems, isInitialized]);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Luồng bắt trạng thái trả về từ cổng SePay chuyển hướng về (giữ nguyên logic cũ)
   useEffect(() => {
@@ -178,28 +185,74 @@ const Cart = () => {
     <div style={{ width: '100%', margin: '0 auto', padding: '20px' }}>
       <Title level={2}><ShoppingCartOutlined /> Giỏ hàng</Title>
       <Row gutter={24}>
-        <Col span={16}>
-          <Table 
-            rowSelection={rowSelection} 
-            columns={columns} 
-            dataSource={cartItems} 
-            rowKey="id" 
-            pagination={false} 
-          />
-        </Col>
-        <Col span={8}>
-          <Card title="Thanh toán">
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 20 }}>
-              <Text>Tổng cộng ({selectedRowKeys.length} món):</Text>
-              <Text type="danger" strong style={{ fontSize: 20 }}>
-                {Number(selectedTotalPrice ?? 0).toLocaleString()} VNĐ
-              </Text>
-            </div>
-            <Button type="primary" block size="large" onClick={handleProceedToCheckout}>
-              TIẾN HÀNH ĐẶT HÀNG
-            </Button>
-          </Card>
-        </Col>
+        {isMobile ? (
+          <>
+            <Col span={24}>
+              {cartItems.map(item => (
+                <Card key={item.id} style={{ marginBottom: 12 }}>
+                  <Row gutter={12} align="middle">
+                    <Col span={8}>
+                      <img src={getImageUrl(item.image, 'https://via.placeholder.com/80')} alt={item.name} style={{ width: '100%', objectFit: 'contain' }} />
+                    </Col>
+                    <Col span={16}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <div>
+                          <Text strong>{item.name}</Text>
+                          <div style={{ color: '#ff4d4f', fontWeight: '600' }}>{Number(item.price).toLocaleString()} VNĐ</div>
+                        </div>
+                        <div style={{ textAlign: 'right' }}>
+                          <InputNumber min={1} value={item.quantity ?? 1} onChange={(val) => updateQuantity(item.id, val ?? 1)} />
+                          <div>
+                            <Button type="text" danger icon={<DeleteOutlined />} onClick={() => removeItem(item.id)} />
+                          </div>
+                        </div>
+                      </div>
+                    </Col>
+                  </Row>
+                </Card>
+              ))}
+            </Col>
+
+            <Col span={24}>
+              <Card title="Thanh toán">
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 20 }}>
+                  <Text>Tổng cộng ({selectedRowKeys.length} món):</Text>
+                  <Text type="danger" strong style={{ fontSize: 20 }}>
+                    {Number(selectedTotalPrice ?? 0).toLocaleString()} VNĐ
+                  </Text>
+                </div>
+                <Button type="primary" block size="large" onClick={handleProceedToCheckout}>
+                  TIẾN HÀNH ĐẶT HÀNG
+                </Button>
+              </Card>
+            </Col>
+          </>
+        ) : (
+          <>
+            <Col span={16}>
+              <Table 
+                rowSelection={rowSelection} 
+                columns={columns} 
+                dataSource={cartItems} 
+                rowKey="id" 
+                pagination={false} 
+              />
+            </Col>
+            <Col span={8}>
+              <Card title="Thanh toán">
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 20 }}>
+                  <Text>Tổng cộng ({selectedRowKeys.length} món):</Text>
+                  <Text type="danger" strong style={{ fontSize: 20 }}>
+                    {Number(selectedTotalPrice ?? 0).toLocaleString()} VNĐ
+                  </Text>
+                </div>
+                <Button type="primary" block size="large" onClick={handleProceedToCheckout}>
+                  TIẾN HÀNH ĐẶT HÀNG
+                </Button>
+              </Card>
+            </Col>
+          </>
+        )}
       </Row>
     </div>
   );

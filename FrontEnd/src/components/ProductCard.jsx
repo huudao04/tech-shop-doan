@@ -35,6 +35,7 @@ const ProductCard = ({ name, price, image, category, brand, id }) => {
     <Card
       hoverable
       onClick={() => navigate(`/product/${id}`)}
+      className="product-card"
       style={{ width: '100%', borderRadius: '12px', overflow: 'hidden' }}
       cover={
         <div style={{

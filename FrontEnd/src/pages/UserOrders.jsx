@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Tag, Typography, message, Card, Popover, Button, Popconfirm, Space, Input, Select, DatePicker } from 'antd';
+import { Table, Tag, Typography, message, Card, Popover, Button, Popconfirm, Space, Input, Select, DatePicker, Drawer } from 'antd';
 import { EyeOutlined, ClockCircleOutlined, CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons';
 import { useLocation } from 'react-router-dom';
 import API from '../utils/axiosClient'; 
 
 const { Title } = Typography;
+const { Option } = Select;
 
 const UserOrders = () => {
   const location = useLocation();
@@ -12,6 +13,8 @@ const UserOrders = () => {
   const [loading, setLoading] = useState(false);
   const [statuses, setStatuses] = useState([]);
   const [paymentMethods, setPaymentMethods] = useState([]);
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const [filterDrawerOpen, setFilterDrawerOpen] = useState(false);
 
   const [filters, setFilters] = useState({
     search: '',
@@ -63,7 +66,10 @@ const UserOrders = () => {
       }
     };
     useEffect(() => {
-    fetchFilterData();
+      fetchFilterData();
+      const handleResize = () => setIsMobile(window.innerWidth < 768);
+      window.addEventListener('resize', handleResize);
+      return () => window.removeEventListener('resize', handleResize);
     }, []);
 
     useEffect(() => {
@@ -250,62 +256,103 @@ const UserOrders = () => {
             Lịch sử đơn hàng của tôi
         </Title>
 
-        {/* 🌟 ĐỒNG BỘ THANH BỘ LỌC ĐA NĂNG SANG CHO USER */}
-        <Space direction="horizontal" wrap size="small">
-          <Input.Search
-            placeholder="Nhập mã đơn cần tìm..."
-            allowClear
-            style={{ width: 200 }}
-            onSearch={(value) => setFilters(prev => ({ ...prev, search: value }))}
-          />
+        {/* Filters: show inline on desktop, hidden + Drawer toggle on mobile */}
+        {!isMobile ? (
+          <Space direction="horizontal" wrap size="small">
+            <Input.Search
+              placeholder="Nhập mã đơn cần tìm..."
+              allowClear
+              style={{ width: 200 }}
+              onSearch={(value) => setFilters(prev => ({ ...prev, search: value }))}
+            />
 
-          <DatePicker 
-            placeholder="Chọn ngày mua"
-            style={{ width: 150 }}
-            onChange={(date, dateString) => setFilters(prev => ({ ...prev, date: dateString || undefined }))}
-          />
+            <DatePicker 
+              placeholder="Chọn ngày mua"
+              style={{ width: 150 }}
+              onChange={(date, dateString) => setFilters(prev => ({ ...prev, date: dateString || undefined }))}
+            />
 
-          
-          <Input 
-            placeholder="Lọc Tỉnh/Thành..." 
-            allowClear
-            style={{ width: 150 }}
-            onChange={(e) => setFilters(prev => ({ ...prev, province: e.target.value }))}
-          />
+            
+            <Input 
+              placeholder="Lọc Tỉnh/Thành..." 
+              allowClear
+              style={{ width: 150 }}
+              onChange={(e) => setFilters(prev => ({ ...prev, province: e.target.value }))}
+            />
 
-          <Select
-            placeholder="Phương thức thanh toán"
-            style={{ width: 160 }}
+            <Select
+              placeholder="Phương thức thanh toán"
+              style={{ width: 160 }}
+              allowClear
+              onChange={(value) => setFilters(prev => ({ ...prev, paymentMethod: value }))}
+            >
+              {paymentMethods.map(method => (
+                <Option key={method} value={method}>
+                  {method === 'COD' ? 'Tiền mặt (COD)' : 'Chuyển khoản (BANK)'}
+                </Option>
+              ))}
+            </Select>
+
+           <Select
+            placeholder="Lọc trạng thái"
+            style={{ width: 140 }}
             allowClear
-            onChange={(value) => setFilters(prev => ({ ...prev, paymentMethod: value }))}
+            onChange={(value) => setFilters(prev => ({ ...prev, status: value }))}
           >
-            {paymentMethods.map(method => (
-              <Option key={method} value={method}>
-                {method === 'COD' ? 'Tiền mặt (COD)' : 'Chuyển khoản (BANK)'}
-              </Option>
+            {statuses.map(status => (
+              <Option key={status} value={status}>{status}</Option>
             ))}
           </Select>
-
-         <Select
-          placeholder="Lọc trạng thái"
-          style={{ width: 140 }}
-          allowClear
-          onChange={(value) => setFilters(prev => ({ ...prev, status: value }))}
-        >
-          {statuses.map(status => (
-            <Option key={status} value={status}>{status}</Option>
-          ))}
-        </Select>
-
         </Space>
+        ) : (
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Button onClick={() => setFilterDrawerOpen(true)}>Bộ lọc</Button>
+          </div>
+        )}
       </div>
 
-      <Table 
-        dataSource={orders} 
-        columns={columns} 
-        rowKey="_id"
-        loading={loading}
-      />
+      <Drawer title="Bộ lọc" placement="bottom" onClose={() => setFilterDrawerOpen(false)} open={filterDrawerOpen} height={360}>
+        <Space direction="vertical" style={{ width: '100%' }}>
+          <Input.Search placeholder="Nhập mã đơn cần tìm..." allowClear onSearch={(value) => setFilters(prev => ({ ...prev, search: value }))} />
+          <DatePicker placeholder="Chọn ngày mua" style={{ width: '100%' }} onChange={(date, dateString) => setFilters(prev => ({ ...prev, date: dateString || undefined }))} />
+          <Input placeholder="Lọc Tỉnh/Thành..." allowClear onChange={(e) => setFilters(prev => ({ ...prev, province: e.target.value }))} />
+          <Select placeholder="Phương thức thanh toán" allowClear onChange={(value) => setFilters(prev => ({ ...prev, paymentMethod: value }))}>
+            {paymentMethods.map(method => <Option key={method} value={method}>{method === 'COD' ? 'Tiền mặt (COD)' : 'Chuyển khoản (BANK)'}</Option>)}
+          </Select>
+          <Select placeholder="Lọc trạng thái" allowClear onChange={(value) => setFilters(prev => ({ ...prev, status: value }))}>
+            {statuses.map(status => <Option key={status} value={status}>{status}</Option>)}
+          </Select>
+        </Space>
+      </Drawer>
+
+      {isMobile ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {orders.map(order => (
+            <Card key={order._id} size="small">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontWeight: 700 }}>{order.orderId}</div>
+                  <div style={{ fontSize: 12, color: '#666' }}>{new Date(order.createdAt).toLocaleString('vi-VN')}</div>
+                  <div style={{ marginTop: 6 }}><strong>Tổng:</strong> <span style={{ color: '#d32f2f' }}>{order.totalPrice?.toLocaleString()} VNĐ</span></div>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ marginBottom: 8 }}>
+                    <Tag color="blue">{order.status}</Tag>
+                  </div>
+                  <Button type="link" onClick={() => { /* preserve existing actions via popconfirm in desktop */ window.location.href = `/orders/${order._id}`; }}>Chi tiết</Button>
+                </div>
+              </div>
+            </Card>
+          ))}
+        </div>
+      ) : (
+        <Table 
+          dataSource={orders} 
+          columns={columns} 
+          rowKey="_id"
+          loading={loading}
+        />
+      )}
     </Card>
   );
 };

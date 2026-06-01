@@ -9,9 +9,13 @@ const NotificationBell = ({
   onMarkRead,
   onMarkAllRead,
   onOpenNotification,
+  mobile = false,
 }) => {
+  const popoverWidth = mobile ? 250 : 380;
+  const popoverPlacement = mobile ? 'bottomLeft' : 'bottomRight';
+
   const content = (
-    <div style={{ width: 380 }}>
+    <div style={{ width: popoverWidth, maxWidth: 'calc(100vw - 24px)' }}>
       <Space style={{ width: '100%', justifyContent: 'space-between', marginBottom: 12 }}>
         <Text strong>Thông báo</Text>
         <Button type="link" size="small" onClick={onMarkAllRead} disabled={!notifications.length}>
@@ -61,7 +65,7 @@ const NotificationBell = ({
   );
 
   return (
-    <Popover content={content} trigger="click" placement="bottomRight" arrow={false}>
+    <Popover content={content} trigger="click" placement={popoverPlacement} arrow={false}>
       <Badge count={unreadCount} overflowCount={99} size="small">
         <Button type="text" icon={<BellOutlined style={{ fontSize: 20, color: 'var(--text-on-primary)' }} />} />
       </Badge>

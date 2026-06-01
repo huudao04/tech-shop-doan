@@ -65,9 +65,9 @@ html, body, #root {
 }
 
 .gradient-header-footer {
-  background: linear-gradient(90deg, #022c22 0%, #064e3b 35%, #10b981 100%);
-  background-size: 100% 100%;
-  animation: gradient-slide-horizontal 6s ease-in-out infinite;
+  background: linear-gradient(90deg, #064e3b 0%, #10b981 55%, #4ade80 100%);
+  background-size: 200% 100%;
+  animation: gradient-slide-horizontal 4s ease-in-out infinite;
   text-align: center;
 }
 
@@ -75,23 +75,6 @@ html, body, #root {
 .gradient-header-footer * {
   color: #fff !important;
   font-weight: 700;
-}
-
-/* Logo image sizing and responsiveness */
-.site-logo-img {
-  width: 140px;
-  height: auto;
-  object-fit: contain;
-  display: inline-block;
-}
-
-.footer-logo {
-  width: 160px;
-}
-
-@media (max-width: 768px) {
-  .site-logo-img { width: 110px; }
-  .footer-logo { width: 120px; }
 }
 
 .gradient-header-footer .ant-menu {
@@ -104,6 +87,45 @@ html, body, #root {
 .gradient-header-footer .ant-input::placeholder {
   color: #0b2b23 !important;
   font-weight: 500 !important;
+}
+
+.site-logo-img {
+  display: block;
+  width: auto;
+  max-width: 150px;
+  object-fit: contain;
+}
+
+/* Mobile bottom navigation (used in UserLayout for small screens) */
+.mobile-bottom-nav {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 58px;
+  background: #ffffff;
+  border-top: 1px solid rgba(0,0,0,0.06);
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  z-index: 1200;
+}
+.mobile-bottom-nav a { color: #444; display:flex; flex-direction:column; align-items:center; font-size:12px; text-decoration:none }
+.mobile-bottom-nav .icon { font-size:20px; }
+
+/* Product card adjustments for small screens */
+.product-card .ant-card-cover { height: 160px !important; }
+.product-card .ant-card-body { padding: 12px !important; }
+
+@media (max-width: 767px) {
+  .site-logo-img {
+    max-width: 130px;
+    max-height: 38px;
+  }
+
+  .gradient-header-footer {
+    text-align: left;
+  }
 }
 
 @keyframes gradient-slide-horizontal {
@@ -129,3 +151,20 @@ html, body, #root {
   border-color: var(--color-primary) !important;
 }
 
+/* Xóa bỏ đường gạch chân mặc định */
+.ant-menu-horizontal .ant-menu-item::after,
+.ant-menu-horizontal .ant-menu-item-selected::after {
+  display: none !important;
+}
+
+/* Tạo style viên thuốc khi được chọn (Selected) */
+.ant-menu-horizontal .ant-menu-item-selected {
+  background-color: rgba(255, 255, 255, 0.2) !important; /* Nền trắng mờ tinh tế trên nền xanh */
+  border-radius: 20px !important;                         /* Bo tròn tít mù thành viên thuốc */
+}
+
+/* Hiệu ứng mờ nhẹ khi hover qua các item khác */
+.ant-menu-horizontal .ant-menu-item:not(.ant-menu-item-selected):hover {
+  background-color: rgba(255, 255, 255, 0.1) !important;
+  border-radius: 20px !important;
+}

@@ -181,7 +181,7 @@ const ChatAI = () => {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
           <Text strong><RobotOutlined /> Trợ lý Tech-Shop AI</Text>
           {hasChatHistory && (
-            <Button size="small" danger onClick={handleClearHistory}>
+            <Button style={{ color: '#ff4d4f', border: '1px solid #ff4d4f' }} onClick={handleClearHistory}>
               Xóa lịch sử
             </Button>
           )}

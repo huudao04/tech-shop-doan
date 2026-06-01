@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Form, Input, Button, Row, Col, Typography, Card, Divider, message, Radio, Space } from 'antd';
 import { useCart } from '../context/CartContex.jsx';
 import { useLocation, useNavigate } from 'react-router-dom'; // Import useLocation để nhận state
 import API from '../utils/axiosClient';
+import { getImageUrl } from '../utils/imageUrl.js';
 
 const { Title, Text } = Typography;
 
@@ -13,10 +14,17 @@ const Checkout = () => {
   const [form] = Form.useForm();
   const [paymentMethod, setPaymentMethod] = useState('COD');
   const [loading, setLoading] = useState(false);
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
   // LOGIC MỚI: Ưu tiên lấy hàng từ checkbox trang Cart truyền sang, nếu không có thì lấy cả giỏ (fallback)
   const displayItems = location.state?.checkoutItems || cartItems;
   const displayTotalPrice = location.state?.checkoutTotalPrice || globalTotalPrice;
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
  const onFinish = async (values) => {
   if (displayItems.length === 0) {
@@ -92,57 +100,137 @@ const Checkout = () => {
   }
 };
   return (
-    <div style={{ padding: '40px', maxWidth: 1200, margin: '0 auto' }}>
+    <div style={{ padding: isMobile ? '16px' : '40px', maxWidth: 1200, margin: '0 auto', paddingBottom: isMobile ? '120px' : '40px' }}>
       <Title level={2}>Thanh toán</Title>
-      <Row gutter={32}>
-        {/* Cột trái: Form thông tin khách hàng */}
-        <Col span={14}>
-          <Card title="Thông tin giao hàng">
-            <Form form={form} layout="vertical" onFinish={onFinish} initialValues={{ paymentMethod: 'COD' }}>
-              <Form.Item name="customerName" label="Họ và tên" rules={[{ required: true, message: 'Vui lòng nhập họ tên' }]}>
-                <Input placeholder="Nguyễn Hữu Đạo" />
-              </Form.Item>
-              <Form.Item name="phoneNumber" label="Số điện thoại" rules={[{ required: true, message: 'Vui lòng nhập số điện thoại' }]}>
-                <Input placeholder="090..." />
-              </Form.Item>
-              <Form.Item name="shippingAddress" label="Địa chỉ nhận hàng" rules={[{ required: true, message: 'Vui lòng nhập địa chỉ' }]}>
-                <Input.TextArea rows={3} placeholder="Số nhà, tên đường, quận/huyện..." />
-              </Form.Item>
+      {isMobile ? (
+        <>
+          <div style={{ marginBottom: 12 }}>
+            <Card title="Thông tin giao hàng">
+              <Form form={form} layout="vertical" onFinish={onFinish} initialValues={{ paymentMethod: 'COD' }}>
+                <Form.Item name="customerName" label="Họ và tên" rules={[{ required: true, message: 'Vui lòng nhập họ tên' }]}>
+                  <Input placeholder="Nguyễn Hữu Đạo" size="large" />
+                </Form.Item>
+                <Form.Item name="phoneNumber" label="Số điện thoại" rules={[{ required: true, message: 'Vui lòng nhập số điện thoại' }]}>
+                  <Input placeholder="090..." size="large" />
+                </Form.Item>
+                <Form.Item name="shippingAddress" label="Địa chỉ nhận hàng" rules={[{ required: true, message: 'Vui lòng nhập địa chỉ' }]}>
+                  <Input.TextArea rows={3} placeholder="Số nhà, tên đường, quận/huyện..." />
+                </Form.Item>
 
-              <Divider orientation="left">Phương thức thanh toán</Divider>
-              <Form.Item name="paymentMethod">
-                <Radio.Group onChange={(e) => setPaymentMethod(e.target.value)} value={paymentMethod}>
-                  <Space direction="vertical">
-                    <Radio value="COD">Thanh toán khi nhận hàng (COD)</Radio>
-                    <Radio value="BANK_TRANSFER">Chuyển khoản ngân hàng thanh toán bằng Qr Code</Radio>
-                  </Space>
-                </Radio.Group>
-              </Form.Item>
+                <Divider orientation="left">Phương thức thanh toán</Divider>
+                <Form.Item name="paymentMethod">
+                  <Radio.Group onChange={(e) => setPaymentMethod(e.target.value)} value={paymentMethod}>
+                    <Space direction="vertical">
+                      <Radio value="COD">Thanh toán khi nhận hàng (COD)</Radio>
+                      <Radio value="BANK_TRANSFER">Chuyển khoản ngân hàng thanh toán bằng Qr Code</Radio>
+                    </Space>
+                  </Radio.Group>
+                </Form.Item>
 
-              <Button type="primary" htmlType="submit" size="large" block loading={loading}>
-                {paymentMethod === 'BANK_TRANSFER' ? 'CHUYỂN SANG CỔNG THANH TOÁN' : 'XÁC NHẬN ĐẶT HÀNG'}
-              </Button>
-            </Form>
-          </Card>
-        </Col>
+                {/* On mobile we keep the submit hidden because we show a fixed bottom bar */}
+                <div style={{ display: 'none' }}>
+                  <Button type="primary" htmlType="submit" size="large" block loading={loading}>
+                    {paymentMethod === 'BANK_TRANSFER' ? 'CHUYỂN SANG CỔNG THANH TOÁN' : 'XÁC NHẬN ĐẶT HÀNG'}
+                  </Button>
+                </div>
+              </Form>
+            </Card>
+          </div>
 
-        {/* Cột phải: Tóm tắt đơn hàng */}
-        <Col span={10}>
-          <Card title="Đơn hàng của bạn">
-            {displayItems.map(item => ( // Sửa đổi hiển thị chỉ những món được tích chọn
-              <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
-                <Text>{item.name} x {item.quantity}</Text>
-                <Text strong>{(item.price * item.quantity).toLocaleString()}đ</Text>
+          <div>
+            <Card title="Đơn hàng của bạn">
+              {displayItems.map(item => (
+                <div key={item._id || item.id} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                    <img src={getImageUrl(item.image, '/images/default-product.jpg')} alt={item.name} style={{ width: 56, height: 56, objectFit: 'contain', borderRadius: 8 }} />
+                    <div>
+                      <div style={{ fontWeight: 700 }}>{item.name}</div>
+                      <div style={{ fontSize: 12, color: '#666' }}>x {item.quantity}</div>
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontWeight: 700, color: '#d32f2f' }}>{(item.price * item.quantity).toLocaleString()} đ</div>
+                  </div>
+                </div>
+              ))}
+              <Divider />
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <Title level={5} style={{ margin: 0 }}>Tổng cộng:</Title>
+                </div>
+                <div>
+                  <Title level={5} type="danger" style={{ margin: 0 }}>{displayTotalPrice.toLocaleString()} VNĐ</Title>
+                </div>
               </div>
-            ))}
-            <Divider />
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <Title level={4}>Tổng cộng:</Title>
-              <Title level={4} type="danger">{displayTotalPrice.toLocaleString()} VNĐ</Title> {/* Hiển thị tổng tiền mới */}
+            </Card>
+          </div>
+
+          {/* Mobile fixed bottom bar with total + action */}
+          <div style={{ position: 'fixed', left: 0, right: 0, bottom: 68, background: '#fff', borderTop: '1px solid rgba(0,0,0,0.06)', padding: '10px 16px', zIndex: 1300 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <div style={{ fontSize: 12, color: '#666' }}>Tổng</div>
+                <div style={{ fontWeight: 800, color: '#d32f2f', fontSize: 16 }}>{displayTotalPrice.toLocaleString()} VNĐ</div>
+              </div>
+              <div style={{ minWidth: 160 }}>
+                <Button type="primary" size="large" block onClick={() => form.submit()} loading={loading}>
+                  {paymentMethod === 'BANK_TRANSFER' ? 'CHUYỂN SANG CỔNG' : 'XÁC NHẬN'}
+                </Button>
+              </div>
             </div>
-          </Card>
-        </Col>
-      </Row>
+          </div>
+        </>
+      ) : (
+        <Row gutter={32}>
+          {/* Cột trái: Form thông tin khách hàng */}
+          <Col span={14}>
+            <Card title="Thông tin giao hàng">
+              <Form form={form} layout="vertical" onFinish={onFinish} initialValues={{ paymentMethod: 'COD' }}>
+                <Form.Item name="customerName" label="Họ và tên" rules={[{ required: true, message: 'Vui lòng nhập họ tên' }]}>
+                  <Input placeholder="Nguyễn Hữu Đạo" />
+                </Form.Item>
+                <Form.Item name="phoneNumber" label="Số điện thoại" rules={[{ required: true, message: 'Vui lòng nhập số điện thoại' }]}>
+                  <Input placeholder="090..." />
+                </Form.Item>
+                <Form.Item name="shippingAddress" label="Địa chỉ nhận hàng" rules={[{ required: true, message: 'Vui lòng nhập địa chỉ' }]}>
+                  <Input.TextArea rows={3} placeholder="Số nhà, tên đường, quận/huyện..." />
+                </Form.Item>
+
+                <Divider orientation="left">Phương thức thanh toán</Divider>
+                <Form.Item name="paymentMethod">
+                  <Radio.Group onChange={(e) => setPaymentMethod(e.target.value)} value={paymentMethod}>
+                    <Space direction="vertical">
+                      <Radio value="COD">Thanh toán khi nhận hàng (COD)</Radio>
+                      <Radio value="BANK_TRANSFER">Chuyển khoản ngân hàng thanh toán bằng Qr Code</Radio>
+                    </Space>
+                  </Radio.Group>
+                </Form.Item>
+
+                <Button type="primary" htmlType="submit" size="large" block loading={loading}>
+                  {paymentMethod === 'BANK_TRANSFER' ? 'CHUYỂN SANG CỔNG THANH TOÁN' : 'XÁC NHẬN ĐẶT HÀNG'}
+                </Button>
+              </Form>
+            </Card>
+          </Col>
+
+          {/* Cột phải: Tóm tắt đơn hàng */}
+          <Col span={10}>
+            <Card title="Đơn hàng của bạn">
+              {displayItems.map(item => (
+                <div key={item._id || item.id} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
+                  <Text>{item.name} x {item.quantity}</Text>
+                  <Text strong>{(item.price * item.quantity).toLocaleString()}đ</Text>
+                </div>
+              ))}
+              <Divider />
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <Title level={4}>Tổng cộng:</Title>
+                <Title level={4} type="danger">{displayTotalPrice.toLocaleString()} VNĐ</Title>
+              </div>
+            </Card>
+          </Col>
+        </Row>
+      )}
     </div>
   );
 };

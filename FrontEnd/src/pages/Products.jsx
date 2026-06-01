@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Row, Col, Card, Button, Typography, Slider, Checkbox, Space, Empty, Spin, message } from 'antd';
+import { Row, Col, Card, Button, Typography, Slider, Checkbox, Space, Empty, Spin, message, Drawer } from 'antd';
 import { ShoppingCartOutlined, EyeOutlined, FilterOutlined } from '@ant-design/icons';
 import { Link, useLocation } from 'react-router-dom';
 import API from '../utils/axiosClient';
@@ -154,72 +154,119 @@ const Products = () => {
     setPriceRange([0, 50000000]);
   };
 
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const [filterDrawerOpen, setFilterDrawerOpen] = useState(false);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   return (
     <div style={{ maxWidth: 1300, margin: '0 auto', padding: '10px 0' }}>
       <Row gutter={[24, 24]}>
         
         {/* THANH BỘ LỌC BÊN TRÁI */}
-        <Col xs={24} md={6}>
-          <Card 
-            title={<Space><FilterOutlined /> Bộ lọc sản phẩm</Space>} 
-            style={{ borderRadius: 8 }}
-            extra={<Button type="link" size="small" onClick={handleResetFilters} style={{ padding: 0 }}>Xóa hết</Button>}
-          >
-            {/* Lọc theo Danh mục */}
-            <div style={{ marginBottom: 25 }}>
-              <Text strong style={{ display: 'block', marginBottom: 10 }}>Danh mục sản phẩm</Text>
-              <Checkbox.Group
-                style={{ width: '100%' }}
-                value={selectedCategories}
-                onChange={(checkedValues) => setSelectedCategories(checkedValues)}
-              >
-                <Row gutter={[0, 8]}>
-                  {categoriesList.map(cat => (
-                    <Col span={24} key={cat}>
-                      <Checkbox value={cat}>{cat}</Checkbox>
-                    </Col>
-                  ))}
-                </Row>
-              </Checkbox.Group>
-            </div>
-
-            {/* Lọc theo Thương hiệu */}
-            <div style={{ marginBottom: 25 }}>
-              <Text strong style={{ display: 'block', marginBottom: 10 }}>Thương hiệu</Text>
-              <Checkbox.Group
-                style={{ width: '100%' }}
-                value={selectedBrands}
-                onChange={(checkedValues) => setSelectedBrands(checkedValues)}
-              >
-                <Row gutter={[0, 8]}>
-                  {brandsList.map(brand => (
-                    <Col span={24} key={brand}>
-                      <Checkbox value={brand}>{brand}</Checkbox>
-                    </Col>
-                  ))}
-                </Row>
-              </Checkbox.Group>
-            </div>
-
-            {/* Lọc theo khoảng giá */}
-            <div>
-              <Text strong style={{ display: 'block', marginBottom: 10 }}>Khoảng giá (VNĐ)</Text>
-              <Slider 
-                range 
-                min={0} 
-                max={50000000} 
-                step={500000} 
-                value={priceRange} 
-                onChange={(value) => setPriceRange(value)} 
-                tooltip={{ formatter: (val) => `${val.toLocaleString()}đ` }}
-              />
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 5 }}>
-                <Text type="secondary" style={{ fontSize: 12 }}>{priceRange[0].toLocaleString()}đ</Text>
-                <Text type="secondary" style={{ fontSize: 12 }}>{priceRange[1].toLocaleString()}đ</Text>
+        {!isMobile ? (
+          <Col xs={24} md={6}>
+            <Card 
+              title={<Space><FilterOutlined /> Bộ lọc sản phẩm</Space>} 
+              style={{ borderRadius: 8 }}
+              extra={<Button type="link" size="small" onClick={handleResetFilters} style={{ padding: 0 }}>Xóa hết</Button>}
+            >
+              {/* Lọc theo Danh mục */}
+              <div style={{ marginBottom: 25 }}>
+                <Text strong style={{ display: 'block', marginBottom: 10 }}>Danh mục sản phẩm</Text>
+                <Checkbox.Group
+                  style={{ width: '100%' }}
+                  value={selectedCategories}
+                  onChange={(checkedValues) => setSelectedCategories(checkedValues)}
+                >
+                  <Row gutter={[0, 8]}>
+                    {categoriesList.map(cat => (
+                      <Col span={24} key={cat}>
+                        <Checkbox value={cat}>{cat}</Checkbox>
+                      </Col>
+                    ))}
+                  </Row>
+                </Checkbox.Group>
               </div>
-            </div>
-          </Card>
-        </Col>
+
+              {/* Lọc theo Thương hiệu */}
+              <div style={{ marginBottom: 25 }}>
+                <Text strong style={{ display: 'block', marginBottom: 10 }}>Thương hiệu</Text>
+                <Checkbox.Group
+                  style={{ width: '100%' }}
+                  value={selectedBrands}
+                  onChange={(checkedValues) => setSelectedBrands(checkedValues)}
+                >
+                  <Row gutter={[0, 8]}>
+                    {brandsList.map(brand => (
+                      <Col span={24} key={brand}>
+                        <Checkbox value={brand}>{brand}</Checkbox>
+                      </Col>
+                    ))}
+                  </Row>
+                </Checkbox.Group>
+              </div>
+
+              {/* Lọc theo khoảng giá */}
+              <div>
+                <Text strong style={{ display: 'block', marginBottom: 10 }}>Khoảng giá (VNĐ)</Text>
+                <Slider 
+                  range 
+                  min={0} 
+                  max={50000000} 
+                  step={500000} 
+                  value={priceRange} 
+                  onChange={(value) => setPriceRange(value)} 
+                  tooltip={{ formatter: (val) => `${val.toLocaleString()}đ` }}
+                />
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 5 }}>
+                  <Text type="secondary" style={{ fontSize: 12 }}>{priceRange[0].toLocaleString()}đ</Text>
+                  <Text type="secondary" style={{ fontSize: 12 }}>{priceRange[1].toLocaleString()}đ</Text>
+                </div>
+              </div>
+            </Card>
+          </Col>
+        ) : (
+          <Col span={24} style={{ marginBottom: 12 }}>
+            <Button block icon={<FilterOutlined />} onClick={() => setFilterDrawerOpen(true)}>Bộ lọc</Button>
+            <Drawer title="Bộ lọc sản phẩm" placement="left" onClose={() => setFilterDrawerOpen(false)} open={filterDrawerOpen} width={320}>
+              <div style={{ marginBottom: 16 }}>
+                <Button type="link" onClick={handleResetFilters}>Xóa hết</Button>
+              </div>
+
+              <div style={{ marginBottom: 16 }}>
+                <Text strong style={{ display: 'block', marginBottom: 10 }}>Danh mục sản phẩm</Text>
+                <Checkbox.Group style={{ width: '100%' }} value={selectedCategories} onChange={(v) => setSelectedCategories(v)}>
+                  <Row gutter={[0,8]}>
+                    {categoriesList.map(cat => <Col span={24} key={cat}><Checkbox value={cat}>{cat}</Checkbox></Col>)}
+                  </Row>
+                </Checkbox.Group>
+              </div>
+
+              <div style={{ marginBottom: 16 }}>
+                <Text strong style={{ display: 'block', marginBottom: 10 }}>Thương hiệu</Text>
+                <Checkbox.Group style={{ width: '100%' }} value={selectedBrands} onChange={(v) => setSelectedBrands(v)}>
+                  <Row gutter={[0,8]}>
+                    {brandsList.map(b => <Col span={24} key={b}><Checkbox value={b}>{b}</Checkbox></Col>)}
+                  </Row>
+                </Checkbox.Group>
+              </div>
+
+              <div>
+                <Text strong style={{ display: 'block', marginBottom: 10 }}>Khoảng giá (VNĐ)</Text>
+                <Slider range min={0} max={50000000} step={500000} value={priceRange} onChange={(value) => setPriceRange(value)} tooltip={{ formatter: (val) => `${val.toLocaleString()}đ` }} />
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8 }}>
+                  <Text type="secondary">{priceRange[0].toLocaleString()}đ</Text>
+                  <Text type="secondary">{priceRange[1].toLocaleString()}đ</Text>
+                </div>
+              </div>
+            </Drawer>
+          </Col>
+        )}
 
         {/* LƯỚI HIỂN THỊ DANH SÁCH SẢN PHẨM BÊN PHẢI */}
         <Col xs={24} md={18}>
@@ -268,9 +315,11 @@ const Products = () => {
                     </div>
 
                     <Space size="middle" style={{ width: '100%', justifyContent: 'space-between', marginTop: 'auto', gap: 8 }}>
-                      <Link to={`/product/${product._id}`}>
-                        <Button icon={<EyeOutlined />}>Chi tiết</Button>
-                      </Link>
+                      {isMobile ? null : (
+                        <Link to={`/product/${product._id}`}>
+                          <Button icon={<EyeOutlined />}>Chi tiết</Button>
+                        </Link>
+                      )}
                       <Button 
                         style={{ width: '100px' }}
                         type="primary" 
