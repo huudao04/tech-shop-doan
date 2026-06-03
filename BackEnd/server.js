@@ -415,7 +415,40 @@ const extractOrderCodeFromMessage = (message) => {
   return orderCodeMatch ? orderCodeMatch[0].toUpperCase() : null;
 };
 
-const isOrderQuestion = (message) => /\b(đơn hàng|don hang|đơn|don|mã đơn|ma don|tra cứu|truy vấn|kiểm tra|kiem tra)\b/i.test(message);
+// Hỗ trợ khớp từ khóa tiếng Việt có/không dấu (dùng cho chatbot, gợi ý tìm kiếm, ...)
+const makeVietnameseRegex = (keyword) => {
+  let str = keyword.toLowerCase().trim();
+  str = str.replace(/[aàáạảãâầấậẩẫăằắặẳẵ]/g, '[aàáạảãâầấậẩẫăằắặẳẵ]');
+  str = str.replace(/[eèéẹẻẽêềếệểễ]/g, '[eèéẹẻẽêềếệểễ]');
+  str = str.replace(/[iìíịỉĩ]/g, '[iìíịỉĩ]');
+  str = str.replace(/[oòóọỏõôồốộổỗơờớợởỡ]/g, '[oòóọỏõôồốộổỗơờớợởỡ]');
+  str = str.replace(/[uùúụủũưừứựửữ]/g, '[uùúụủũưừứựửữ]');
+  str = str.replace(/[yỳýỵỷỹ]/g, '[yỳýỵỷỹ]');
+  str = str.replace(/[dđ]/g, '[dđ]');
+  return new RegExp(str, 'i');
+};
+
+const ORDER_QUESTION_KEYWORDS = [
+  'đơn hàng',
+  'don hang',
+  'mã đơn',
+  'ma don',
+  'tra cứu',
+  'truy vấn',
+  'kiểm tra',
+  'kiem tra',
+  'tình trạng đơn',
+  'đơn của tôi',
+  'đơn',
+  'don'
+];
+
+const isOrderQuestion = (message) => {
+  const text = String(message || '').trim();
+  if (!text) return false;
+  if (extractOrderCodeFromMessage(text)) return true;
+  return ORDER_QUESTION_KEYWORDS.some((keyword) => makeVietnameseRegex(keyword).test(text));
+};
 
 const isProductQuestion = (message) => /\b(sản phẩm|san pham|mặt hàng|mat hang|giới thiệu|gioi thieu|xem chi tiết|chi tiết|chi tiet|mẫu|mau|mua|ảnh|anh|hình ảnh|hinh anh|xem ảnh|xem anh|xem hình|xem hinh)\b/i.test(message);
 
@@ -520,7 +553,18 @@ ${message}`;
   let lastError = null;
   for (const modelName of GEMINI_MODEL_CANDIDATES) {
     try {
-      const model = genAI.getGenerativeModel({ model: modelName });
+      const model = genAI.getGenerativeModel({ 
+        model: modelName, 
+        tools: [
+    {
+      googleSearch: {
+        dynamicRetrievalConfig: {
+          mode: "MODE_DYNAMIC",
+          dynamicThreshold: 0.3, // Ngưỡng kích hoạt: tự động nhận biết khi nào cần tra Google
+        },
+      },
+    },
+  ], });
       const result = await model.generateContent(intentPrompt);
       const text = result?.response?.text?.() || '';
       const parsed = parseAiJsonResponse(text);
@@ -984,19 +1028,6 @@ app.get('/api/products/search-suggest', async (req, res) => {
   try {
     const { q } = req.query;
     if (!q) return res.json([]);
-
-    // Hàm chuyển đổi chuỗi tiếng Việt thành biểu thức regex hỗ trợ cả có dấu và không dấu
-    const makeVietnameseRegex = (keyword) => {
-      let str = keyword.toLowerCase().trim();
-      str = str.replace(/[aàáạảãâầấậẩẫăằắặẳẵ]/g, '[aàáạảãâầấậẩẫăằắặẳẵ]');
-      str = str.replace(/[eèéẹẻẽêềếệểễ]/g, '[eèéẹẻẽêềếệểễ]');
-      str = str.replace(/[iìíịỉĩ]/g, '[iìíịỉĩ]');
-      str = str.replace(/[oòóọỏõôồốộổỗơờớợởỡ]/g, '[oòóọỏõôồốộổỗơờớợởỡ]');
-      str = str.replace(/[uùúụủũưừứựửữ]/g, '[uùúụủũưừứựửữ]');
-      str = str.replace(/[yỳýỵỷỹ]/g, '[yỳýỵỷỹ]');
-      str = str.replace(/[dđ]/g, '[dđ]');
-      return new RegExp(str, 'i'); // 'i' giúp không phân biệt hoa thường
-    };
 
     const searchRegex = makeVietnameseRegex(q);
 
@@ -2391,12 +2422,19 @@ const handleChatAsk = async (req, res) => {
     const systemInstruction = `Bạn là một nhân viên tư vấn bán hàng trực tuyến xuất sắc, thân thiện và am hiểu công nghệ tại cửa hàng "TechShop".
     Nhiệm vụ trọng tâm của bạn là sử dụng ngữ cảnh danh sách sản phẩm được cung cấp bên dưới để trả lời các câu hỏi từ khách hàng một cách ngắn gọn, thuyết phục, tập trung chốt đơn.
 
-    Quy tắc bắt buộc khi tư vấn:
-    1. LUÔN LUÔN trả lời bằng Tiếng Việt lịch sự, xưng hô là "TechShop" hoặc "Shop" và gọi khách hàng là "bạn" hoặc "quý khách".
-    2. Chỉ tư vấn và báo giá các sản phẩm thực tế ĐANG CÓ TRONG KHO theo đúng danh sách bên dưới cung cấp.
-    3. Nếu khách hàng hỏi mua sản phẩm có số lượng tồn kho bằng 0, hãy báo là sản phẩm này hiện tại đang tạm hết hàng và gợi ý khách sang một dòng máy khác cùng phân khúc đang còn hàng.
-    4. Tuyệt đối KHÔNG ĐƯỢC tự ý bịa đặt thông tin cấu hình hoặc tự tăng/giảm giá tiền sai lệch so với danh sách sản phẩm dưới đây.
+    QUY TẮC SỬ DỤNG GOOGLE SEARCH VÀ PHẢN HỒI (BẮT BUỘC):
+    1. Khi khách hỏi về thời tiết, tin tức, giá cả... bạn âm thầm sử dụng công cụ Google Search để lấy thông tin thực tế.
+    2. TUYỆT ĐỐI KHÔNG ĐƯỢC hiển thị các từ ngữ mô tả quá trình tra cứu ra màn hình chat với khách. 
+      Nghiêm cấm xuất hiện các cụm từ như: "Công cụ tìm kiếm:", "Từ khóa:", "Sau khi tra cứu...", "Đang tìm kiếm...", "Google Search:".
+    3. Hãy trả lời một cách tự nhiên như một con người vừa xem thời tiết xong. Vào thẳng câu trả lời luôn (Ví dụ: "Dạ, thời tiết tại Thái Nguyên hôm nay đang có...").
+    4. Sau khi trả lời xong thông tin ngoài lề, khéo léo bẻ lái ngay sang tư vấn sản phẩm công nghệ của TechShop (iPhone 15 Pro Max, Samsung Galaxy S24 Ultra, MacBook...).
+    NHIỆM VỤ CHÍNH:
+    - Tư vấn sản phẩm công nghệ, chính sách bảo hành, khuyến mãi của TechShop dựa trên dữ liệu cửa hàng cung cấp (RAG).
 
+    NHIỆM VỤ MỞ RỘNG (KHI KHÁCH HỎI NGOÀI LỀ):
+    - Nếu khách hỏi các câu hỏi thời gian thực hoặc kiến thức xã hội (Ví dụ: "thời tiết hôm nay", "giá vàng", "tin tức mới nhất", "toán học",...), bạn ĐƯỢC PHÉP sử dụng công cụ Tìm kiếm Google (đã được tích hợp) để trả lời chính xác, khách quan cho khách.
+    - NGUYÊN TẮC BẺ LÁI: Sau khi trả lời xong câu hỏi ngoài lề, hãy khéo léo để lại một câu gợi ý ngắn gọn quay lại chủ đề công nghệ của cửa hàng. 
+      (Ví dụ: "Thời tiết Hà Nội hôm nay đang mưa lớn đó ạ, bạn nên ở nhà cho an toàn. À, nếu ở nhà rảnh rỗi bạn có muốn tham khảo qua mấy mẫu tay cầm chơi game đang giảm giá 20% tại TechShop không?").
     --- DỮ LIỆU CỬA HÀNG HIỆN TẠI (TỪ DATABASE) ---
     ${productContext}
     ---------------------------------
