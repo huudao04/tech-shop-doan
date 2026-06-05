@@ -137,7 +137,7 @@ const Cart = () => {
       key: 'category',
     },
     {
-      title: 'Thuơng hiệu',
+      title: 'Thương hiệu',
       dataIndex: 'brand',
       key: 'brand',
     },
@@ -167,7 +167,12 @@ const Cart = () => {
       title: 'Xóa',
       key: 'action',
       render: (_, record) => (
-        <Button type="text" danger icon={<DeleteOutlined />} onClick={() => removeItem(record.id)} />
+        <span 
+          style={{ color: '#ff4d4f', cursor: 'pointer', fontSize: '16px' }} 
+          onClick={() => removeItem(record.id)}
+        >
+        <DeleteOutlined />
+    </span>
       ),
     },
   ];
