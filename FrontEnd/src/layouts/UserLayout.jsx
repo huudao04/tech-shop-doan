@@ -295,7 +295,7 @@ const UserLayout = () => {
           <>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
               <Link to="/" style={{ display: 'flex', alignItems: 'center' }}>
-                <img src="/public/logo.png" alt="Tech-Shop Logo" className="site-logo-img" />
+                <img src="/logo.png" alt="Tech-Shop Logo" className="site-logo-img" />
               </Link>
 
               <div style={headerActionStyle}>
@@ -354,7 +354,7 @@ const UserLayout = () => {
           <>
             <div style={{ display: 'flex', alignItems: 'center', width: '100%', gap: '20px' }}>
               <Link to="/">
-                <img src="/public/logo.png" alt="Tech-Shop Logo" className="site-logo-img" />
+                <img src="/logo.png" alt="Tech-Shop Logo" className="site-logo-img" />
               </Link>
 
               <Menu mode="horizontal" selectedKeys={getSelectedMenuKey()} style={{ flex: 1, borderBottom: 'none' }}>
@@ -462,7 +462,7 @@ const UserLayout = () => {
             []
             ) : (
               <div style={{ textAlign: 'center', marginBottom: '16px', marginLeft: '80px' }}>
-                <img src="/public/logo.png" alt="Tech-Shop Logo" className="site-logo-img" />
+                <img src="/logo.png" alt="Tech-Shop Logo" className="site-logo-img" />
               </div>
             ))}
             <p style={{ color: '#a6a6a6', lineHeight: '1.6' }}>

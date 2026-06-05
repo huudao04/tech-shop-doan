@@ -114,7 +114,7 @@ const Login = () => {
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', background: '#f0f2f5' }}>
         <Card 
           style={{ width: 420, boxShadow: '0 4px 15px rgba(0,0,0,0.1)', borderRadius: '12px' }}
-          title={<img src="/public/logo.png" alt="Tech-Shop Logo" style={{ width: '200px', display: 'block', margin: '0 auto' }} />}
+          title={<img src="/logo.png" alt="Tech-Shop Logo" style={{ width: '200px', display: 'block', margin: '0 auto' }} />}
         >
           <Tabs 
             activeKey={activeTab} 

@@ -560,7 +560,7 @@ ${message}`;
       googleSearch: {
         dynamicRetrievalConfig: {
           mode: "MODE_DYNAMIC",
-          dynamicThreshold: 0.3, // Ngưỡng kích hoạt: tự động nhận biết khi nào cần tra Google
+          dynamicThreshold: 0.3,
         },
       },
     },
