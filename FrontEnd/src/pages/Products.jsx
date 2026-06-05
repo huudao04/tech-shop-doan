@@ -288,7 +288,7 @@ const Products = () => {
                       <Link to={`/product/${product._id}`}>
                         <img
                           alt={product.name}
-                         src={getImageUrl(Array.isArray(product.image) ? product.image[0] : product.image, '/images/default-product.jpg') || '/images/default-product.jpg'}
+                          src={getImageUrl(Array.isArray(product.image) ? product.image[0] : product.image, '/images/default-product.jpg') || '/images/default-product.jpg'}
                           style={{ height: 180, width: '100%', objectFit: 'contain', padding: 8, background: '#f9f9f9' }}
                         />
                       </Link>
