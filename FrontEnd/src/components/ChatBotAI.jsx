@@ -192,7 +192,7 @@ const ChatAI = () => {
           <div key={index} style={{ textAlign: item.role === 'user' ? 'right' : 'left', marginBottom: 15 }}>
             <div style={{ 
               display: 'inline-block', padding: 12, borderRadius: 12,
-              background: item.role === 'user' ? '#1677ff' : '#fff',
+              background: '#fff',
               color: item.role === 'user' ? '#fff' : '#000',
               boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
               maxWidth: '85%'
