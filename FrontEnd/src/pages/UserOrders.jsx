@@ -213,7 +213,6 @@ const UserOrders = () => {
       title: 'Thao tác',
       key: 'actions',
       render: (_, record) => {
-        // Nếu trạng thái là Chờ xác nhận, hiện nút Hủy
         if (record.status === 'Chờ xác nhận') {
           return (
             <Popconfirm
@@ -228,7 +227,6 @@ const UserOrders = () => {
             </Popconfirm>
           );
         }
-        // Nếu trạng thái là Đang giao, hiện nút Đã nhận hàng
         if (record.status === 'Đang giao') {
           return (
             <Popconfirm
@@ -339,7 +337,7 @@ const UserOrders = () => {
                   <div style={{ marginBottom: 8 }}>
                     <Tag color="blue">{order.status}</Tag>
                   </div>
-                  <Button type="link" onClick={() => { /* preserve existing actions via popconfirm in desktop */ window.location.href = `/orders/${order._id}`; }}>Chi tiết</Button>
+                  <Button type="link" onClick={() => { window.location.href = `/orders/${order._id}`; }}>Chi tiết</Button>
                 </div>
               </div>
             </Card>
