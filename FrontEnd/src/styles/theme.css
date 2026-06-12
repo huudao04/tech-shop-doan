@@ -90,7 +90,7 @@ html, body, #root {
 }
 
 .site-logo-img {
-  display: block;
+
   width: auto;
   max-width: 150px;
   object-fit: contain;

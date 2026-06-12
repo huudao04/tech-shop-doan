@@ -271,9 +271,12 @@ const AdminProducts = () => {
         </Space>
       </Card>
 
-      <Table dataSource={products} columns={columns} rowKey="_id" />
+      <Table 
+        dataSource={products} 
+        columns={columns} 
+        rowKey="_id"
+      />
 
-      {/* Modal Form giữ nguyên */}
       <Modal 
         title={editingProduct ? "Chỉnh sửa thông tin sản phẩm" : "Thêm sản phẩm mới"} 
         open={isModalOpen} 
@@ -299,7 +302,8 @@ const AdminProducts = () => {
           </Form.Item>
 
           <Form.Item label="Số lượng trong kho" name="stock">
-            <InputNumber style={{ width: '100%' }} min={0} />
+            <InputNumber 
+              style={{ width: '100%' }} min={0} />
           </Form.Item>
 
           <Form.Item label="Danh mục" name="category" rules={[{ required: true, message: 'Vui lòng chọn danh mục!' }]}>

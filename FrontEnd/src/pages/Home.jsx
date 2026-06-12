@@ -20,7 +20,6 @@ import API from '../utils/axiosClient';
 
 const { Title, Text } = Typography;
 
-// Full-width image banner carousel with short pill selector
 const BannerCarousel = () => {
   const carouselRef = useRef(null);
   const [index, setIndex] = useState(0);
@@ -139,7 +138,6 @@ const Home = () => {
   return (
     <div style={{ backgroundColor: '#f5f7fa', paddingBottom: '50px' }}>
 
-      {/* full-width banner */}
       <div style={{ marginBottom: '40px' }}>
         <BannerCarousel />
       </div>
@@ -205,7 +203,13 @@ const Home = () => {
         )}
 
         {/* 4. SECTION SẢN PHẨM KHUYẾN MÃI / BÁN CHẠY (TABS MIX) */}
-        <div style={{ background: '#fff', padding: '24px', borderRadius: '12px', marginBottom: '40px', boxShadow: '0 2px 10px rgba(0,0,0,0.03)' }}>
+        <div 
+          style={{ 
+            background: '#fff', 
+            padding: '24px', 
+            borderRadius: '12px', 
+            marginBottom: '40px', 
+            boxShadow: '0 2px 10px rgba(0,0,0,0.03)' }}>
           <Tabs 
             defaultActiveKey="1"
             size="large"
@@ -266,12 +270,10 @@ const Home = () => {
           />
         </div>
         
-        {/* 5. SECTION TẤT CẢ SẢN PHẨM (Thiết kế trượt trang dạng Carousel 8 sản phẩm) */}
         <div style={{ marginTop: '40px' }} className="all-products-carousel">
-          <Title level={3} style={{ marginBottom: '24px' }}>Tất Cả Sản Phẩm Công Nghệ</Title>
+          <Title level={3} style={{ marginBottom: '24px' }}>SẢN PHẨM</Title>
           
           {(() => {
-            // Hàm chia nhỏ mảng sản phẩm, mỗi nhóm chứa tối đa 8 sản phẩm
             const chunkProducts = (arr, size) => {
               return arr.reduce((acc, _, i) => (i % size === 0 ? [...acc, arr.slice(i, i + size)] : acc), []);
             };
@@ -284,9 +286,9 @@ const Home = () => {
 
             return (
               <Carousel 
-                dots={true}       // Hiện các thanh gạch ngang chuyển trang dưới chân slide
-                infinite={false}  // Không lặp vòng vô tận khi lướt hết sản phẩm
-                speed={600}       // Tốc độ trượt mượt mà (ms)
+                dots={true}  
+                infinite={false} 
+                speed={600}     
               >
                 {productGroups.map((group, groupIndex) => (
                   <div key={groupIndex}>
@@ -311,7 +313,6 @@ const Home = () => {
             );
           })()}
 
-          {/* Ghi đè CSS CSS-in-JS để biến dấu tròn chấm mặc định thành thanh gạch ngang dẹt giống mẫu */}
           <style>{`
             .all-products-carousel .ant-carousel .slick-dots {
               position: relative;
