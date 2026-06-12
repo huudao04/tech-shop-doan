@@ -83,12 +83,12 @@ const Home = () => {
   const [brands, setBrands] = useState([]);
 
   useEffect(() => {
-    API.get('/api/products?sort=sold&limit=4').then(res => setHotDeals(res.data));
-    API.get('/api/products?sort=newest&limit=4').then(res => setNewArrivals(res.data));
-    API.get('/api/products').then(res => setProducts(res.data));
-    API.get('/api/categories').then(res => setCategories(res.data));
-    API.get('/api/brands').then(res => setBrands(res.data));
-  }, []);
+  API.get('/api/products?sort=sold&limit=4').then(res => setHotDeals(res.data.products || []));
+  API.get('/api/products?sort=newest&limit=4').then(res => setNewArrivals(res.data.products || []));
+  API.get('/api/products').then(res => setProducts(res.data.products || []));
+  API.get('/api/categories').then(res => setCategories(res.data));
+  API.get('/api/brands').then(res => setBrands(res.data));
+}, []);
 
   const getCategoryIcon = (slug = '', name = '') => {
     const value = `${slug} ${name}`.toLowerCase();

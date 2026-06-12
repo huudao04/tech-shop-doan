@@ -18,16 +18,26 @@ export const getProducts = async (req, res) => {
       if (minPrice) query.price.$gte = Number(minPrice);
       if (maxPrice) query.price.$lte = Number(maxPrice);
     }
+    const currentPage = Math.max(1, parseInt(req.query.page) || 1);
+    const pageSize = Math.max(1, parseInt(req.query.limit) || 10);
+    const skip = (currentPage - 1) * pageSize;
+
+    const totalProducts = await Product.countDocuments(query);
 
     let mongooseQuery = Product.find(query);
     if (sort === 'sold') mongooseQuery = mongooseQuery.sort({ sold: -1 });
     else if (sort === 'newest') mongooseQuery = mongooseQuery.sort({ createdAt: -1 });
     else mongooseQuery = mongooseQuery.sort({ createdAt: -1 });
 
-    if (limit) mongooseQuery = mongooseQuery.limit(Number(limit));
+    if (req.query.limit) mongooseQuery = mongooseQuery.limit(Number(req.query.limit));
 
     const products = await mongooseQuery;
-    return res.json(products);
+    return res.json({
+      products,
+      totalProducts,
+      currentPage,
+      pageSize
+    });
   } catch (error) {
     return res.status(500).json({ success: false, message: 'Lỗi khi lấy danh sách sản phẩm' });
   }
@@ -82,7 +92,6 @@ export const getProductById = async (req, res) => {
   }
 };
 
-// [ADMIN] Upload images helper (files are uploaded directly to Cloudinary by multer)
 export const uploadImages = async (req, res) => {
   try {
     const fileNames = (req.files || []).map(f => f.path);

@@ -22,13 +22,19 @@ const AdminProducts = () => {
     category: undefined,
     brand: undefined,
     minPrice: undefined,
-    maxPrice: undefined
+    maxPrice: undefined,
+    page: 1,
+    limit: 10
   });
 
-  // Hàm lấy danh sách sản phẩm từ MongoDB
+  const [totalProducts, setTotalProducts] = useState(0);
+
   const fetchProducts = async () => {
     try {
-      const params = {};
+      const params = {
+        page: filters.page,
+        limit: filters.limit
+      };
       if (filters.search) params.search = filters.search;
       if (filters.category) params.category = filters.category;
       if (filters.brand) params.brand = filters.brand;
@@ -36,7 +42,9 @@ const AdminProducts = () => {
       if (filters.maxPrice !== undefined && filters.maxPrice !== null) params.maxPrice = filters.maxPrice;
 
       const res = await API.get('/api/products', { params });
-      setProducts(res.data);
+      
+      setProducts(res.data.products || []);
+      setTotalProducts(res.data.pagination?.totalProducts || 0);
     } catch (error) {
       message.error('Không thể tải danh sách sản phẩm');
     }
@@ -224,14 +232,14 @@ const AdminProducts = () => {
             allowClear
             enterButton={<SearchOutlined />}
             style={{ width: 210 }}
-            onSearch={(value) => setFilters(prev => ({ ...prev, search: value }))}
+            onSearch={(value) => setFilters(prev => ({ ...prev, search: value, page: 1 }))}
           />
 
           <Select
             placeholder="Lọc theo danh mục"
             style={{ width: 170 }}
             allowClear
-            onChange={(value) => setFilters(prev => ({ ...prev, category: value }))}
+            onChange={(value) => setFilters(prev => ({ ...prev, category: value, page: 1 }))}
           >
             {categories.map(c => (
               <Select.Option key={c._id} value={c.name}>{c.name}</Select.Option>
@@ -242,7 +250,7 @@ const AdminProducts = () => {
             placeholder="Lọc theo thương hiệu"
             style={{ width: 170 }}
             allowClear
-            onChange={(value) => setFilters(prev => ({ ...prev, brand: value }))}
+            onChange={(value) => setFilters(prev => ({ ...prev, brand: value, page: 1 }))}
           >
             {brands.map(b => (
               <Select.Option key={b._id} value={b.name}>{b.name}</Select.Option>
@@ -255,7 +263,7 @@ const AdminProducts = () => {
             min={0}
             formatter={value => `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
             parser={value => value.replace(/\$\s?|(,*)/g, '')}
-            onChange={(value) => setFilters(prev => ({ ...prev, minPrice: value }))}
+            onChange={(value) => setFilters(prev => ({ ...prev, minPrice: value, page: 1 }))}
           />
           
           <span style={{ color: '#bfbfbf' }}>-</span>
@@ -266,7 +274,7 @@ const AdminProducts = () => {
             min={0}
             formatter={value => `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
             parser={value => value.replace(/\$\s?|(,*)/g, '')}
-            onChange={(value) => setFilters(prev => ({ ...prev, maxPrice: value }))}
+            onChange={(value) => setFilters(prev => ({ ...prev, maxPrice: value, page: 1 }))}
           />
         </Space>
       </Card>
@@ -275,6 +283,22 @@ const AdminProducts = () => {
         dataSource={products} 
         columns={columns} 
         rowKey="_id"
+        pagination={{
+        current: filters.page,
+        pageSize: filters.limit,
+        total: totalProducts,
+        showSizeChanger: true,
+        pageSizeOptions: ['10', '20', '50', '100'],
+        locale: { items_per_page: '/ trang' },
+        showTotal: (total) => `Tổng cộng ${total} sản phẩm`,
+        onChange: (page, pageSize) => {
+          setFilters(prev => ({
+            ...prev,
+            page: page,
+            limit: pageSize
+          }));
+        }
+      }}
       />
 
       <Modal 
