@@ -155,7 +155,7 @@ const AdminLayout = () => {
               unreadCount={unreadCount}
               onMarkRead={markNotificationRead}
               onMarkAllRead={markAllNotificationsRead}
-              onOpenNotification={handleOpenNotification}
+              onOpenNotification={handleOpenNotification}           
             />
           </Space>
         </div>

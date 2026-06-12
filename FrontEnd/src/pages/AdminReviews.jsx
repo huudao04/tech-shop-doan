@@ -243,7 +243,7 @@ const handleReplySubmit = async () => {
             icon={<CommentOutlined className="text-emerald-600" />} 
             onClick={() => openReplyModal(record)}
             title="Phản hồi đánh giá"
-            className="hover:bg-emerald-50"
+            className="btn-action hover:bg-emerald-50!"
           />
           {/* Nút Sửa */}
           <Button 
@@ -251,7 +251,7 @@ const handleReplySubmit = async () => {
             icon={<EditOutlined className="text-blue-600" />} 
             onClick={() => openReviewModal(record)}
             title="Sửa đánh giá"
-            className="hover:bg-blue-50"
+            className="btn-action hover:bg-emerald-50!"
           />
           {/* Nút Xóa */}
           <Popconfirm
@@ -266,7 +266,7 @@ const handleReplySubmit = async () => {
               type="text" 
               danger 
               icon={<DeleteOutlined />} 
-              className="hover:bg-red-50"
+              className="btn-action hover:bg-emerald-50!"
             />
           </Popconfirm>
         </Space>

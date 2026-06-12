@@ -26,15 +26,13 @@ html, body, #root {
   color: var(--text-on-primary) !important;
 }
 
-.ant-btn:not(.ant-btn-default) {
-  /* Mặc định: chữ trên các nút (trừ các nút có nền trắng) hiển thị màu trắng */
+.ant-btn:not(.ant-btn-default):not(.btn-action) {
   color: var(--text-on-primary) !important;
 }
-
 /* Áp màu cho phần tử con bên trong nút (icon, span, text) để tránh bị ghi đè */
-.ant-btn:not(.ant-btn-default) > *,
-.ant-btn:not(.ant-btn-default) span,
-.ant-btn:not(.ant-btn-default) .anticon {
+.ant-btn:not(.ant-btn-default):not(.btn-action) > *,
+.ant-btn:not(.ant-btn-default):not(.btn-action) span,
+.ant-btn:not(.ant-btn-default):not(.btn-action) .anticon {
   color: var(--text-on-primary) !important;
 }
 

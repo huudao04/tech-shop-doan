@@ -67,7 +67,7 @@ const NotificationBell = ({
   return (
     <Popover content={content} trigger="click" placement={popoverPlacement} arrow={false}>
       <Badge count={unreadCount} overflowCount={99} size="small">
-        <Button  type="text" icon={<BellOutlined style={{ fontSize: 20, color: 'black'}} />} />
+        <Button  type="text" icon={<BellOutlined style={{ fontSize: 20, color: 'black'}} />}  className="btn-action"/>
       </Badge>
     </Popover>
   );
