@@ -221,7 +221,7 @@ const UserOrders = () => {
               okText="Đồng ý"
               cancelText="Không"
             >
-              <Button type="text" danger icon={<CloseCircleOutlined />} size="small">
+              <Button type="text" danger icon={<CloseCircleOutlined />} size="small" className="btn-action">
                 Hủy đơn
               </Button>
             </Popconfirm>
@@ -254,7 +254,6 @@ const UserOrders = () => {
             Lịch sử đơn hàng của tôi
         </Title>
 
-        {/* Filters: show inline on desktop, hidden + Drawer toggle on mobile */}
         {!isMobile ? (
           <Space direction="horizontal" wrap size="small">
             <Input.Search

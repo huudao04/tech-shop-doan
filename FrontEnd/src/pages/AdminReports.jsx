@@ -44,11 +44,14 @@ const AdminReports = () => {
           totalRevenue: res.data.totalRevenue || 0,
           totalOrdersCount: res.data.totalOrdersCount || 0
         });
+        setExportLoading(false);
       } else {
         // Fallback phòng trường hợp mảng cũ
         setChartData(Array.isArray(res.data) ? res.data : []);
+        setExportLoading(false);
       }
     } catch (error) {
+      setExportLoading(false);
       console.error(error);
       message.error('Không thể tải dữ liệu báo cáo thống kê');
     } finally {
