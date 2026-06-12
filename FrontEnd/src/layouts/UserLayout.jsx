@@ -458,22 +458,18 @@ const UserLayout = () => {
           
           {/* Cột 1: Giới thiệu về Website (Giữ nguyên) */}
           <Col xs={24} sm={12} md={6}>
-            {(isMobile ? (
-            []
-            ) : (
-              <div style={{ textAlign: 'center' }}>
-                <img src="/logo.png" alt="Tech-Shop Logo" className="site-logo-img" />
-              </div>
-            ))}
-            <p style={{ color: '#a6a6a6', lineHeight: '1.6' }}>
+            <div style={{ fontWeight: 'bold', fontSize: '16px', color: '#fff', marginBottom: '22px', textAlign: 'start' }}>
+              Về TECH-SHOP
+            </div>
+            <p style={{ color: '#a6a6a6', textAlign: 'start', lineHeight: '1.6' }}>
               TECH-SHOP là hệ thống bán lẻ thiết bị công nghệ chính hãng hàng đầu, cung cấp các sản phẩm điện thoại, máy tính và phụ kiện cao cấp với mức giá cạnh tranh nhất.
             </p>
-            <p style={{ color: '#a6a6a6' }}><strong>Địa chỉ:</strong> Ngõ 167, đường Z115, xã Quyết Thắng, TP. Thái Nguyên</p>
+            <p style={{ color: '#a6a6a6', textAlign: 'start', marginTop: '15px'}}><strong>Địa chỉ:</strong> Ngõ 167, đường Z115, xã Quyết Thắng, TP. Thái Nguyên</p>
           </Col>
 
           {/* Cột 2: Chính sách mua hàng (ĐÃ ĐỔI SANG LIST ANTD) */}
           <Col xs={24} sm={12} md={6}>
-            <div style={{ fontWeight: 'bold', fontSize: '16px', color: '#fff', marginBottom: '16px' }}>Chính sách</div>
+            <div style={{ fontWeight: 'bold', fontSize: '16px', color: '#fff', marginBottom: '16px', textAlign: 'start' }}>Chính sách</div>
             <List
               split={false} 
               dataSource={policyData}
@@ -489,7 +485,7 @@ const UserLayout = () => {
 
           {/* Cột 3: Dịch vụ và Thông tin khác (ĐÃ ĐỔI SANG LIST ANTD) */}
           <Col xs={24} sm={12} md={6}>
-            <div style={{ fontWeight: 'bold', fontSize: '16px', color: '#fff', marginBottom: '16px' }}>Dịch vụ & Thông tin</div>
+            <div style={{ fontWeight: 'bold', fontSize: '16px', color: '#fff', marginBottom: '16px', textAlign: 'start' }}>Dịch vụ & Thông tin</div>
             <List
               split={false} 
               dataSource={serviceData}
@@ -505,13 +501,7 @@ const UserLayout = () => {
 
           {/* Cột 4: Kết nối & Liên kết (Giữ nguyên) */}
           <Col xs={24} sm={12} md={6}>
-            <div style={{ fontWeight: 'bold', fontSize: '16px', color: '#fff', marginBottom: '16px' }}>Kết nối với chúng tôi</div>
-            <Space size="middle" style={{ marginBottom: '20px' }}>
-              <a href="https://facebook.com" target="_blank" rel="noreferrer" style={{ color: '#1890ff', fontSize: '24px' }}><FacebookOutlined /></a>
-              <a href="https://youtube.com" target="_blank" rel="noreferrer" style={{ color: '#ff4d4f', fontSize: '24px' }}><YoutubeOutlined /></a>
-              <a href="https://instagram.com" target="_blank" rel="noreferrer" style={{ color: '#ff4d4f', fontSize: '24px' }}><InstagramOutlined /></a>
-              <a href="/" style={{ color: '#52c41a', fontSize: '24px' }}><GlobalOutlined /></a>
-            </Space>
+            <div style={{ fontWeight: 'bold', fontSize: '16px', color: '#fff', marginBottom: '16px', textAlign: 'start' }}>Kết nối với chúng tôi</div>           
             <List
               split={false}
               dataSource={supportData}
@@ -523,6 +513,12 @@ const UserLayout = () => {
                 </List.Item>
               )}
             />
+            <Space size="middle" style={{ display: 'flex', gap: '15px', marginTop: '4px' }}>
+              <a href="https://facebook.com" target="_blank" rel="noreferrer" style={{ color: '#1890ff', fontSize: '24px' }}><FacebookOutlined /></a>
+              <a href="https://youtube.com" target="_blank" rel="noreferrer" style={{ color: '#ff4d4f', fontSize: '24px' }}><YoutubeOutlined /></a>
+              <a href="https://instagram.com" target="_blank" rel="noreferrer" style={{ color: '#ff4d4f', fontSize: '24px' }}><InstagramOutlined /></a>
+              <a href="/" style={{ color: '#52c41a', fontSize: '24px' }}><GlobalOutlined /></a>
+            </Space>
           </Col>
 
         </Row>
