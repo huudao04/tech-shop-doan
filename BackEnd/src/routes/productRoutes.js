@@ -1,0 +1,24 @@
+import express from 'express';
+import {
+  getProducts,
+  getProductById,
+  createProduct,
+  updateProduct,
+  deleteProduct,
+  searchSuggest
+} from '../controllers/productController.js';
+import { addProductReview } from '../controllers/reviewController.js';
+import { authMiddleware, adminMiddleware } from '../middlewares/auth.js';
+import upload from '../services/upload.js';
+
+const router = express.Router();
+
+router.get('/search-suggest', searchSuggest);
+router.get('/', getProducts);
+router.post('/', authMiddleware, adminMiddleware, upload.array('image', 5), createProduct);
+router.post('/:productId/reviews', authMiddleware, addProductReview);
+router.get('/:id', getProductById);
+router.put('/:id', authMiddleware, adminMiddleware, upload.array('image', 5), updateProduct);
+router.delete('/:id', authMiddleware, adminMiddleware, deleteProduct);
+
+export default router;
