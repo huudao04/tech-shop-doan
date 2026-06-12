@@ -80,10 +80,7 @@ const Products = () => {
     return () => clearTimeout(handler);
   }, [priceRange]);
 
-
-  // ========================================================
-  // 4. EFFECT DUY NHẤT CHỊU TRÁCH NHIỆM GỌI API /api/products ĐỂ LỌC DỮ LIỆU
-  // ========================================================
+  // 4. API /api/products ĐỂ LỌC DỮ LIỆU
   useEffect(() => {
     const fetchFilteredProducts = async () => {
       setLoading(true);
@@ -109,7 +106,11 @@ const Products = () => {
 
         // Thực hiện 1 request duy nhất gom đủ mọi điều kiện lọc bằng API
         const response = await API.get('/api/products', { params });
-        setProducts(response.data);
+        if (response.data && Array.isArray(response.data.products)) {
+          setProducts(response.data.products);
+        } else {
+          setProducts([]);
+        }
       } catch (error) {
         console.error("Lỗi gọi API lọc sản phẩm:", error);
         message.error("Lỗi kết nối bộ lọc từ hệ thống!");
