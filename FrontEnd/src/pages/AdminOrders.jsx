@@ -183,7 +183,7 @@ const AdminOrders = () => {
                             record.paymentStatus !== 'Đã thanh toán'
 
         // Đơn hàng đã hoàn thành ('Đã nhận'), đã hủy, hoặc đơn QR chưa thanh toán thì không cho Admin đổi trạng thái
-        const isDisabled = status === 'Đã nhận' || status === 'Hủy đơn hàng' || isQrNotPaid;
+        const isDisabled = status === 'Đã nhận' || status === 'Hủy đơn hàng';
 
         return (
           <Select
