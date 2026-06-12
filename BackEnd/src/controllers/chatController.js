@@ -28,24 +28,24 @@ export const handleChat = async (req, res) => {
   }
 
   try {
-    const questionEmbedding = await getEmbedding(userQuestion, 'query');
-    const products = await Product.find({}, 'name price stock description category brand image');
-    const chatQuery = buildChatHistoryQuery(chatIdentity);
-    const chatHistory = chatQuery ? await ChatHistory.findOne(chatQuery).lean() : null;
+    const questionEmbedding = await getEmbedding(userQuestion, 'query'); // lấy key gemini
+    const products = await Product.find({}, 'name price stock description category brand image');//tìm kiếm sản phẩm
+    const chatQuery = buildChatHistoryQuery(chatIdentity); // tìm lịch sử chat dựa theo userId hoặc sessionId
+    const chatHistory = chatQuery ? await ChatHistory.findOne(chatQuery).lean() : null; //lấy lịch sử từ db
 
-    const wantsOrderInfo = isOrderQuestion(userQuestion);
-    const currentUserId = chatIdentity.userId;
-    const orderCode = extractOrderCodeFromMessage(userQuestion);
-    const recentMessages = [...(chatHistory?.messages || []), ...(Array.isArray(req.body.history) ? req.body.history : [])]
+    const wantsOrderInfo = isOrderQuestion(userQuestion); // check xem có phải câu hỏi có từ khóa đơn hàng hay không
+    const currentUserId = chatIdentity.userId; // lấy id người dùng 
+    const orderCode = extractOrderCodeFromMessage(userQuestion); // chuẩn hóa từ đơn hàng nếu hỏi
+    const recentMessages = [...(chatHistory?.messages || []), ...(Array.isArray(req.body.history) ? req.body.history : [])] // lấy lịch sử trước đó ở forntend gửi lên và database
       .filter((item) => item && typeof item.content === 'string')
       .slice(-8)
       .map((item) => `${item.role === 'assistant' || item.role === 'ai' ? 'Trợ lý' : 'Khách hàng'}: ${item.content}`)
       .join('\n');
 
-    const chatIntent = await detectChatIntent({ message: userQuestion, recentMessages, products });
-    const productQuery = (chatIntent.query || userQuestion).trim();
-    const productMatches = await buildBestProductMatches(productQuery);
-    const isFollowUpProductAsk = /\b(xem|cho tôi xem|cho mình xem|show|ảnh|hình|hinh|chi tiết|chi tiet|details|image|photo)\b/i.test(userQuestion);
+    const chatIntent = await detectChatIntent({ message: userQuestion, recentMessages, products }); // phân loại ý định câu hỏi để trả về kết quả phù hợp nhất (ý định tìm sản phẩm, hỏi về đơn hàng hay hỏi chung chung)
+    const productQuery = (chatIntent.query || userQuestion).trim(); // sau khi phân loại câu hỏi
+    const productMatches = await buildBestProductMatches(productQuery); // lọc dữ liệu
+    const isFollowUpProductAsk = /\b(xem|cho tôi xem|cho mình xem|show|ảnh|hình|hinh|chi tiết|chi tiet|details|image|photo)\b/i.test(userQuestion); // show ảnh
 
     if (wantsOrderInfo || chatIntent.intent === 'order') {
       if (!currentUserId) {

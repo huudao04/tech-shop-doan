@@ -27,7 +27,6 @@ const ChatAI = () => {
 
   const handleSend = async () => {
     if (!inputValue.trim()) return;
-
     const currentMsg = inputValue;
     const userMsg = { role: 'user', content: currentMsg };
     setMessages(prev => [...prev, userMsg]);
