@@ -87,7 +87,6 @@ const Checkout = () => {
         document.body.appendChild(form);
         form.submit();
       } else {
-        // Ship COD thì chuyển hướng sang màn thành công thông thường
         navigate(`/my-orders?status=success&orderId=${createdOrder._id}`);
       }
     }
@@ -108,31 +107,14 @@ const Checkout = () => {
             <Card title="Thông tin giao hàng">
               <Form form={form} layout="vertical" onFinish={onFinish} initialValues={{ paymentMethod: 'COD' }}>
                 <Form.Item name="customerName" label="Họ và tên" rules={[{ required: true, message: 'Vui lòng nhập họ tên' }]}>
-                  <Input placeholder="Nguyễn Hữu Đạo" size="large" />
+                  <Input placeholder="Nhập tên người nhận" size="large" />
                 </Form.Item>
                 <Form.Item name="phoneNumber" label="Số điện thoại" rules={[{ required: true, message: 'Vui lòng nhập số điện thoại' }]}>
-                  <Input placeholder="090..." size="large" />
+                  <Input placeholder="Nhập số điện thoại" size="large" />
                 </Form.Item>
                 <Form.Item name="shippingAddress" label="Địa chỉ nhận hàng" rules={[{ required: true, message: 'Vui lòng nhập địa chỉ' }]}>
                   <Input.TextArea rows={3} placeholder="Số nhà, tên đường, quận/huyện..." />
-                </Form.Item>
-
-                <Divider orientation="left">Phương thức thanh toán</Divider>
-                <Form.Item name="paymentMethod">
-                  <Radio.Group onChange={(e) => setPaymentMethod(e.target.value)} value={paymentMethod}>
-                    <Space direction="vertical">
-                      <Radio value="COD">Thanh toán khi nhận hàng (COD)</Radio>
-                      <Radio value="BANK_TRANSFER">Chuyển khoản ngân hàng thanh toán bằng Qr Code</Radio>
-                    </Space>
-                  </Radio.Group>
-                </Form.Item>
-
-                {/* On mobile we keep the submit hidden because we show a fixed bottom bar */}
-                <div style={{ display: 'none' }}>
-                  <Button type="primary" htmlType="submit" size="large" block loading={loading}>
-                    {paymentMethod === 'BANK_TRANSFER' ? 'CHUYỂN SANG CỔNG THANH TOÁN' : 'XÁC NHẬN ĐẶT HÀNG'}
-                  </Button>
-                </div>
+                </Form.Item>               
               </Form>
             </Card>
           </div>
@@ -145,11 +127,8 @@ const Checkout = () => {
                     <img src={getImageUrl(item.image, '/images/default-product.jpg')} alt={item.name} style={{ width: 56, height: 56, objectFit: 'contain', borderRadius: 8 }} />
                     <div>
                       <div style={{ fontWeight: 700 }}>{item.name}</div>
-                      <div style={{ fontSize: 12, color: '#666' }}>x {item.quantity}</div>
+                      <div style={{ fontSize: 12, color: 'red' }}>x {item.quantity}</div>
                     </div>
-                  </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontWeight: 700, color: '#d32f2f' }}>{(item.price * item.quantity).toLocaleString()} đ</div>
                   </div>
                 </div>
               ))}
@@ -163,22 +142,24 @@ const Checkout = () => {
                 </div>
               </div>
             </Card>
+
+            <Divider orientation="left">Phương thức thanh toán</Divider>
+                <Form.Item name="paymentMethod">
+                  <Radio.Group onChange={(e) => setPaymentMethod(e.target.value)} value={paymentMethod}>
+                    <Space direction="vertical">
+                      <Radio value="COD">Thanh toán khi nhận hàng (COD)</Radio>
+                      <Radio value="BANK_TRANSFER">Chuyển khoản ngân hàng thanh toán bằng Qr Code</Radio>
+                    </Space>
+                  </Radio.Group>
+                </Form.Item>
+
+                <div >
+                  <Button type="primary" htmlType="submit" size="large" block loading={loading}>
+                    {paymentMethod === 'BANK_TRANSFER' ? 'CHUYỂN SANG CỔNG THANH TOÁN' : 'XÁC NHẬN ĐẶT HÀNG'}
+                  </Button>
+                </div>
           </div>
 
-          {/* Mobile fixed bottom bar with total + action */}
-          <div style={{ position: 'fixed', left: 0, right: 0, bottom: 68, background: '#fff', borderTop: '1px solid rgba(0,0,0,0.06)', padding: '10px 16px', zIndex: 1300 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <div style={{ fontSize: 12, color: '#666' }}>Tổng</div>
-                <div style={{ fontWeight: 800, color: '#d32f2f', fontSize: 16 }}>{displayTotalPrice.toLocaleString()} VNĐ</div>
-              </div>
-              <div style={{ minWidth: 160 }}>
-                <Button type="primary" size="large" block onClick={() => form.submit()} loading={loading}>
-                  {paymentMethod === 'BANK_TRANSFER' ? 'CHUYỂN SANG CỔNG' : 'XÁC NHẬN'}
-                </Button>
-              </div>
-            </div>
-          </div>
         </>
       ) : (
         <Row gutter={32}>
@@ -187,10 +168,10 @@ const Checkout = () => {
             <Card title="Thông tin giao hàng">
               <Form form={form} layout="vertical" onFinish={onFinish} initialValues={{ paymentMethod: 'COD' }}>
                 <Form.Item name="customerName" label="Họ và tên" rules={[{ required: true, message: 'Vui lòng nhập họ tên' }]}>
-                  <Input placeholder="Nguyễn Hữu Đạo" />
+                  <Input placeholder="Nhập tên người nhận" />
                 </Form.Item>
                 <Form.Item name="phoneNumber" label="Số điện thoại" rules={[{ required: true, message: 'Vui lòng nhập số điện thoại' }]}>
-                  <Input placeholder="090..." />
+                  <Input placeholder="Nhập số điện thoại" />
                 </Form.Item>
                 <Form.Item name="shippingAddress" label="Địa chỉ nhận hàng" rules={[{ required: true, message: 'Vui lòng nhập địa chỉ' }]}>
                   <Input.TextArea rows={3} placeholder="Số nhà, tên đường, quận/huyện..." />

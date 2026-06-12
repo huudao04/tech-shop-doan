@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { FloatButton, Popover, Input, Button, Typography, Card, Tag, message } from 'antd';
 import { RobotOutlined, SendOutlined, EllipsisOutlined, ShoppingOutlined, FileTextOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';

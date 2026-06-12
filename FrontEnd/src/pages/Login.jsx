@@ -91,7 +91,6 @@ const Login = () => {
     }
   };
 
-  // Xử lý yêu cầu Quên mật khẩu
   const handleForgotPassword = async (values) => {
     setForgotLoading(true);
     try {
@@ -109,7 +108,6 @@ const Login = () => {
   };
 
   return (
-    // Bọc trong GoogleOAuthProvider (Lấy Client ID từ Google Cloud Console)
     <GoogleOAuthProvider clientId="838155976083-9neeovmm0n6b3f5qs05l7tq7s1nuc5a0.apps.googleusercontent.com">
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', background: '#f0f2f5' }}>
         <Card 
@@ -130,12 +128,17 @@ const Login = () => {
                       <Input prefix={<MailOutlined style={{ color: 'rgba(0,0,0,.25)' }} />} placeholder="example@gmail.com" size="large" />
                     </Form.Item>
 
-                    <Form.Item name="password" label="Mật khẩu" rules={[{ required: true, message: 'Vui lòng nhập mật khẩu đăng nhập!' }]}>
+                    <Form.Item 
+                      name="password" 
+                      label="Mật khẩu" 
+                      rules={[
+                        { required: true, message: 'Vui lòng nhập mật khẩu đăng nhập!' },                       
+                        ]}>
                       <Input.Password prefix={<LockOutlined style={{ color: 'rgba(0,0,0,.25)' }} />} placeholder="******" size="large" />
                     </Form.Item>
 
                     <div style={{ textAlign: 'right', marginBottom: '20px' }}>
-                      <Button type="link" onClick={() => setIsForgotModalOpen(true)} style={{ padding: 0 }}>
+                      <Button onClick={() => setIsForgotModalOpen(true)} style={{ padding: 0, border: 'none'  }}>
                         Quên mật khẩu?
                       </Button>
                     </div>
@@ -148,7 +151,6 @@ const Login = () => {
 
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: '15px', gap: '10px' }}>
                       <span style={{ color: '#8c8c8c' }}>Hoặc đăng nhập bằng</span>
-                      {/* Nút Đăng nhập Google nguyên bản của Ant/Google */}
                       <GoogleLogin
                         onSuccess={handleGoogleSuccess}
                         onError={() => message.error('Đăng nhập Google thất bại!')}
@@ -171,7 +173,21 @@ const Login = () => {
                       <Input prefix={<MailOutlined style={{ color: 'rgba(0,0,0,.25)' }} />} placeholder="example@gmail.com" size="large" />
                     </Form.Item>
 
-                    <Form.Item name="password" label="Mật khẩu" rules={[{ required: true, min: 6, message: 'Mật khẩu phải chứa ít nhất 6 ký tự!' }]}>
+                    <Form.Item 
+                      name="password" 
+                      label="Mật khẩu" 
+                      rules={[
+                        { required: true, min: 6, message: 'Mật khẩu phải chứa ít nhất 6 ký tự!' },
+                        { 
+                          pattern: /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{6,}$/, 
+                          message: (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', paddingTop: '4px' }}>
+                            <span>• Phải có chữ cái viết hoa.</span>
+                            <span>• Chứa ít nhất một ký tự đặc biệt.</span>
+                          </div>
+                          )
+                        }
+                        ]}>
                       <Input.Password prefix={<LockOutlined style={{ color: 'rgba(0,0,0,.25)' }} />} placeholder="Nhập mật khẩu (tối thiểu 6 ký tự)" size="large" />
                     </Form.Item>
 
@@ -180,7 +196,18 @@ const Login = () => {
                       label="Xác nhận mật khẩu" 
                       dependencies={['password']}
                       rules={[
-                        { required: true, message: 'Vui lòng xác nhận lại mật khẩu!' },
+                        { 
+                          required: true, message: 'Vui lòng xác nhận lại mật khẩu!' 
+                        },
+                        { 
+                        pattern: /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{6,}$/, 
+                        message: (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', paddingTop: '4px' }}>
+                          <span>• Phải có chữ cái viết hoa.</span>
+                          <span>• Chứa ít nhất một ký tự đặc biệt.</span>
+                        </div>
+                        )
+                        },
                         ({ getFieldValue }) => ({
                           validator(_, value) {
                             if (!value || getFieldValue('password') === value) {
@@ -206,7 +233,6 @@ const Login = () => {
           />
         </Card>
 
-        {/* MODAL NHẬP EMAIL QUÊN MẬT KHẨU */}
         <Modal
           title="Quên mật khẩu tài khoản"
           open={isForgotModalOpen}
