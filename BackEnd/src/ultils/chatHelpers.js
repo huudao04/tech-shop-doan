@@ -183,77 +183,75 @@ const parseAiJsonResponse = (text) => {
   }
 };
 
-export const detectChatIntent = async ({ message, recentMessages, products }) => {
-  if (!genAI) {
-    return { intent: 'other', query: message, confidence: 0 };
-  }
+export const detectChatIntent = async ({ message, recentMessages = [], products = [] }) => {
+  if (!genAI) return { intent: 'other', query: message, confidence: 0 };
 
-  const referencedProductName = findReferencedProductName({
-    currentMessage: message,
-    recentMessages,
-    products
-  });
+  const referencedProductName = recentMessages
+    .filter(m => m.role === 'assistant' && m.productContext?.name)
+    .pop()?.productContext?.name || '';
 
-  const productNames = products
-    .slice(0, 25)
-    .map((product) => `- ${product.name}`)
-    .join('\n');
+  // Bổ sung các cấu trúc intent báo cáo và ép AI quy đổi tiền tệ lóng sang số dạng chuỗi
+  const intentPrompt = `
+    Bạn là một chuyên gia phân loại ý định người dùng cho chatbot cửa hàng công nghệ TechShop.
+    Hãy phân tích câu tin nhắn mới nhất của người dùng dưới đây và trả về một cấu trúc JSON duy nhất.
 
-  const intentPrompt = `Bạn là bộ phân loại ý định cho chatbot bán hàng TechShop.
-Phân tích hội thoại và chỉ trả về JSON hợp lệ theo mẫu:
-{"intent":"product|order|other","query":"chuỗi tìm kiếm ngắn gọn hoặc rỗng","confidence":0.0}
+    Tin nhắn mới nhất: "${message}"
 
-Quy tắc:
-- intent = product nếu người dùng muốn xem, hỏi, so sánh, tìm, mở, hoặc xem ảnh/hình của sản phẩm.
-- intent = order nếu người dùng hỏi đơn hàng, vận chuyển, trạng thái đơn, mã đơn.
-- Nếu người dùng nói "cái đó", "nó", "sản phẩm này", "cho tôi xem ảnh", "xem hình", hãy suy luận từ ngữ cảnh hội thoại gần nhất.
-- Nếu đã xác định được sản phẩm được nhắc gần nhất, hãy dùng đúng tên đó làm query.
-- query nên là tên sản phẩm hoặc cụm từ tìm kiếm ngắn gọn nhất có thể, ưu tiên tên sản phẩm nếu xác định được.
-- Không được thêm giải thích ngoài JSON.
+    Các loại Intent hợp lệ bạn bắt buộc phải phân loại:
+    1. "product": Hỏi mua, tìm kiếm thông tin tính năng, thông số sản phẩm cụ thể.
+    2. "order": Hỏi về trạng thái đơn hàng, hủy đơn, kiểm tra đơn hàng, xem giỏ hàng.
+    3. "product-report": Người dùng đang hỏi dạng thống kê/so sánh về sản phẩm như:
+       - Bán chạy nhất, hot nhất, mua nhiều nhất.
+       - Bán ế nhất, ít ai mua, tệ nhất.
+       - Đắt nhất, cao nhất, rẻ nhất, thấp nhất.
+       - Hỏi lọc sản phẩm theo ngân sách tiền (ví dụ: "tầm 10 triệu mua gì", "có máy nào 10 củ không", "máy tính dưới 20tr500k", "máy nào tầm 15 chai").
+    4. "order-report": Người dùng hỏi thống kê về hóa đơn/đơn hàng (Đơn đắt nhất, đơn rẻ nhất, tìm đơn hàng của TÔI theo khoảng giá tiền nào đó).
+    5. "customer-report": Hỏi về thông tin khách hàng mua nhiều nhất, khách VIP nhất hệ thống.
+    6. "other": Chào hỏi, tán gẫu, hỏi thời tiết, hoặc các câu hỏi chung chung khác ngoài các loại trên.
 
-Danh sách sản phẩm đang có:
-${productNames || '- (trống)'}
+    Đặc biệt lưu ý khi phân tích ngân sách tiền mặt của người dùng:
+    - Nếu tin nhắn có nhắc đến giá tiền, phân khúc giá hoặc ngân sách, bạn phải tự động tính toán quy đổi các thuật ngữ lóng tiếng Việt (như: tr = triệu, củ = triệu, chai = triệu, k = nghìn, đồng = 1) về một con số dạng chuỗi CHỈ CHỨA SỐ (ví dụ: "10 triệu", "10tr", "10 củ", "10 chai" -> "10000000"; "10k" -> "10000"; "20 triệu 5 nghìn", "20tr500k", "20.5 củ" -> "20500000"). Nhét con số này vào trường "extractedBudget". Nếu không có giá tiền, hãy để rỗng "".
 
-Sản phẩm được nhắc gần nhất trong hội thoại, nếu có:
-${referencedProductName || '- (không xác định)'}
-
-Hội thoại gần đây:
-${recentMessages || '- (không có)'}
-
-Tin nhắn hiện tại:
-${message}`;
+    Trả về định dạng JSON nghiêm ngặt sau, không viết thêm bất kỳ chữ nào khác ngoài JSON:
+    {
+      "intent": "product" | "order" | "product-report" | "order-report" | "customer-report" | "other",
+      "query": "từ khóa tìm kiếm chính hoặc tên sản phẩm",
+      "extractedBudget": "chuỗi_chỉ_chứa_số_sau_khi_quy_đổi_hoặc_rỗng",
+      "confidence": 0.95
+    }
+  `;
 
   let lastError = null;
   for (const modelName of GEMINI_MODEL_CANDIDATES) {
     try {
-      const model = genAI.getGenerativeModel({
-        model: modelName,
-      })
+      const model = genAI.getGenerativeModel({ model: modelName });
       const result = await model.generateContent(intentPrompt);
       const text = result?.response?.text?.() || '';
-      const parsed = parseAiJsonResponse(text);
+      
+      // Hàm helper parse của bạn có sẵn
+      const parsed = parseAiJsonResponse ? parseAiJsonResponse(text) : JSON.parse(text.replace(/```json|```/g, '').trim());
 
       if (parsed && typeof parsed === 'object') {
-        const intent = ['product', 'order', 'other'].includes(parsed.intent) ? parsed.intent : 'other';
-        const query = typeof parsed.query === 'string' ? parsed.query.trim() : '';
-
         return {
-          intent,
-          query: query || referencedProductName || message,
+          intent: parsed.intent || 'other',
+          query: parsed.query || message,
+          extractedBudget: parsed.extractedBudget || '',
           confidence: Number(parsed.confidence) || 0
         };
       }
-
-      return { intent: 'other', query: referencedProductName || message, confidence: 0 };
     } catch (error) {
       lastError = error;
-      if (error?.status === 404 || error?.status === 429 || error?.status === 503) continue;
+      const statusCode = error?.status || error?.response?.status;
+      const errorString = String(error);
+      if (statusCode === 429 || statusCode === 503 || errorString.includes('429')) {
+        continue;
+      }
       break;
     }
   }
 
   console.error('Lỗi phân loại intent chatbot:', lastError?.message || lastError);
-  return { intent: 'other', query: referencedProductName || message, confidence: 0 };
+  return { intent: 'other', query: message, extractedBudget: '', confidence: 0 };
 };
 
 export const buildOrderSummary = (order) => ({
