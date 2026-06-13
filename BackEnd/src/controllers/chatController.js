@@ -108,7 +108,7 @@ export const handleChat = async (req, res) => {
         });
       }
 
-      // Trường hợp: Hỏi mua theo ngân sách tiền (Xử lý toàn bộ các loại từ lóng củ, chai, tr, k, số lẻ)
+      // Trường hợp: Hỏi mua theo ngân sách tiền (Xử lý toàn bộ các loại từ lóng)
       if (chatIntent.extractedBudget) {
         const budgetAmount = Number(chatIntent.extractedBudget);
         if (!isNaN(budgetAmount) && budgetAmount > 0) {
@@ -296,16 +296,27 @@ export const handleChat = async (req, res) => {
     }
 
     let productContext = 'Dưới đây là danh sách toàn bộ sản phẩm công nghệ đang có sẵn trong cửa hàng TechShop của chúng ta:\n';
-    products.forEach((p, index) => {
-      productContext += `${index + 1}. Tên: ${p.name} | Giá: ${p.price.toLocaleString()} VNĐ | Hãng: ${p.brand} | Loại: ${p.category} | Số lượng tồn kho: ${p.stock} chiếc | Mô tả: ${p.description || 'Không có'}\n`;
-    });
+    if (productsForContext && productsForContext.length > 0) {
+      productsForContext.forEach((p, index) => {
+        productContext += `${index + 1}. Tên: ${p.name} | Giá: ${p.price.toLocaleString('vi-VN')} VNĐ | Hãng: ${p.brand} | Loại: ${p.category} | Số lượng tồn kho: ${p.stock} chiếc | Mô tả: ${p.description || 'Không có'}\n`;
+      });
+    } else {
+      productContext += "Hiện tại hệ thống đang cập nhật danh sách sản phẩm.";
+    }
+    let questionEmbedding = [];
+    try {
+      questionEmbedding = await getEmbedding(userQuestion, 'query');
+    } catch (embedErr) {
+      console.warn('Không lấy được embedding cho câu hỏi:', embedErr.message);
+    }
 
     const knowledgeDocuments = await Knowledge.find({}).lean();
     const matchedKnowledgeContext = knowledgeDocuments
       .map((document) => ({
         fileName: document.fileName || 'Tài liệu không rõ tên',
         content: document.content || '',
-        score: cosineSimilarity(questionEmbedding, document.embedding || [])
+        // Nếu không lấy được embedding, mặc định score = 0 để không bị crash hàm cosineSimilarity
+        score: questionEmbedding.length > 0 ? cosineSimilarity(questionEmbedding, document.embedding || []) : 0
       }))
       .filter((document) => document.score > 0.45)
       .sort((left, right) => right.score - left.score)
