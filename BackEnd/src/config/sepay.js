@@ -13,7 +13,7 @@ sepayClient.verifyWebhookToken = function (req) {
   
   // 🔐 BẮT BUỘC AUTH: Đọc mã bảo mật từ Header do SePay gửi sang
   const authHeader = req.headers['authorization'];
-  const MY_SECRET_KEY = process.env.SEPAY_SECRET_KEY; // Chuỗi token cấu hình trong file .env
+  const MY_SECRET_KEY = process.env.SEPAY_SECRET_TOKEN; // Chuỗi token cấu hình trong file .env
 
   // 1. Kiểm tra xem request có gửi kèm Header Authorization dạng Bearer không
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -26,7 +26,7 @@ sepayClient.verifyWebhookToken = function (req) {
 
   // 3. So khớp token nhận được với cấu hình hệ thống
   if (tokenReceived !== MY_SECRET_KEY) {
-    console.error('❌ Thất bại: Mã bảo mật Webhook (Secret Key) không chính xác!');
+    console.error('❌ Thất bại: Mã bảo mật Webhook (Secret Token) không chính xác!');
     return null;
   }
 
