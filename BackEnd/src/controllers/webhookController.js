@@ -6,7 +6,7 @@ import { getIo } from '../services/socket.js';
 
 const handleSePayWebhook = async (req, res, titlePrefix = 'Thanh toán tự động từ SePay ✅') => {
   try {
-    const transaction = sepayClient.verifyWebhookToken(req.body);
+    const transaction = sepayClient.verifyWebhookToken(req);
     if (!transaction) return res.status(400).json({ message: 'Mã bảo mật webhook không hợp lệ' });
 
     const { code, amount } = transaction;
