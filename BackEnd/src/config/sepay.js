@@ -1,4 +1,5 @@
 import { SePayPgClient } from 'sepay-pg-node';
+import jwt from 'jsonwebtoken';
 import 'dotenv/config';
 
 const sepayClient = new SePayPgClient({
@@ -7,32 +8,36 @@ const sepayClient = new SePayPgClient({
   secret_key: process.env.SEPAY_SECRET_KEY
 });
 
-// 🔒 Thay đổi tham số từ (body) thành (req) để lấy headers xác thực
+// Ghi đè hàm để tự verify JWT theo logic của ông
 sepayClient.verifyWebhookToken = function (req) {
   const body = req.body;
   
-  // 🔐 BẮT BUỘC AUTH: Đọc mã bảo mật từ Header do SePay gửi sang
-  const authHeader = req.headers['authorization'];
-  const MY_SECRET_KEY = process.env.SEPAY_SECRET_TOKEN; // Chuỗi token cấu hình trong file .env
-
-  // 1. Kiểm tra xem request có gửi kèm Header Authorization dạng Bearer không
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    console.error('❌ Thất bại: Không tìm thấy Authorization Header hợp lệ từ SePay');
+  // 1. Lấy Token JWT từ Header Authorization
+  const authHeader = req.headers['authorization'] || req.headers['Authorization'];
+  
+  if (!authHeader || !authHeader.toLowerCase().startsWith('bearer ')) {
+    console.error('❌ Thất bại: Không tìm thấy JWT Token trong Authorization Header');
     return null;
   }
 
-  // 2. Tách chuỗi token thực tế nằm sau chữ 'Bearer '
-  const tokenReceived = authHeader.split(' ')[1];
+  const jwtToken = authHeader.split(' ')[1]?.trim();
 
-  // 3. So khớp token nhận được với cấu hình hệ thống
-  if (tokenReceived !== MY_SECRET_KEY) {
-    console.error('❌ Thất bại: Mã bảo mật Webhook (Secret Token) không chính xác!');
+  try {
+    // 2. Tiến hành verify Token JWT bằng Secret Key mà ông dùng để tạo ra cái JWT đó
+    // (Ông kiểm tra xem lúc tạo JWT ông dùng JWT_SECRET hay SEPAY_SECRET_TOKEN nhé, ở đây tôi ví dụ là JWT_SECRET)
+    const decoded = jwt.verify(jwtToken, process.env.JWT_SECRET);
+    
+    console.log('✅ Xác thực JWT thành công! Dữ liệu trong token:', decoded);
+    
+    // Nếu ông có lưu thông tin gì trong JWT để đối chiếu (ví dụ: { role: 'sepay' }), ông có thể check ở đây:
+    // if (decoded.role !== 'sepay') return null;
+
+  } catch (error) {
+    console.error('❌ Thất bại: JWT Token không hợp lệ hoặc đã hết hạn!', error.message);
     return null;
   }
 
-  console.log('✅ Xác thực Webhook SePay thành công!');
-
-  // 4. Nếu khớp mã, bóc tách dữ liệu trả về cho controller xử lý đơn hàng
+  // 3. Nếu verify JWT thành công, bóc tách data trả về cho webhookController xử lý đơn hàng
   if (body) {
     return {
       code: body?.order?.order_invoice_number || body?.order?.order_id,
