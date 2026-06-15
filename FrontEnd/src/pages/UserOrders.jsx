@@ -3,6 +3,7 @@ import { Table, Tag, Typography, message, Card, Popover, Button, Popconfirm, Spa
 import { EyeOutlined, ClockCircleOutlined, CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons';
 import { useLocation } from 'react-router-dom';
 import API from '../utils/axiosClient'; 
+import { io } from 'socket.io-client';
 
 const { Title } = Typography;
 const { Option } = Select;
@@ -75,6 +76,22 @@ const UserOrders = () => {
     useEffect(() => {
       fetchMyOrders();
     }, [filters]);
+
+    useEffect(() => {
+    const socket = io('https://backend-techshop.onrender.com' || 'http://localhost:5000'); 
+    const currentUser = JSON.parse(localStorage.getItem('user')); 
+    if (currentUser?._id) {
+      socket.emit('join_room', { userId: currentUser._id, role: 'customer' });
+    }
+    socket.on('order_payment_updated', (data) => {
+      message.success(`Đơn hàng ${data.orderId} đã chuyển khoản thành công! 🎉`);
+      fetchMyOrders(); 
+    });
+    return () => {
+      socket.off('order_payment_updated');
+      socket.disconnect();
+    };
+  }, []);
 
   // Người dùng chủ động hủy đơn hàng
   const handleCancelOrder = async (id) => {

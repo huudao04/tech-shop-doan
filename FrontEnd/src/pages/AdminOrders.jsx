@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Table, Tag, Select, Typography, message, Card, Popover, Space, Input, DatePicker } from 'antd';
 import { EyeOutlined, SearchOutlined } from '@ant-design/icons';
 import API from '../utils/axiosClient';
+import { io } from 'socket.io-client';
 
 const { Title } = Typography;
 const { Option } = Select;
@@ -62,6 +63,20 @@ const AdminOrders = () => {
   useEffect(() => {
     fetchOrders();
   }, [filters]);
+
+  useEffect(() => {
+    const socket = io('https://backend-techshop.onrender.com' || 'http://localhost:5000');
+    socket.emit('join_room', { role: 'admin' });
+    socket.on('admin_order_updated', (data) => {
+      message.info(`Đơn hàng ${data.orderId} vừa được khách thanh toán tự động! 💰`);
+      fetchOrders(); 
+    });
+
+    return () => {
+      socket.off('admin_order_updated');
+      socket.disconnect();
+    };
+  }, []);
 
   // Xử lý đổi trạng thái đơn hàng (Đồng bộ qua API PUT tiếng Việt của admin)
   const handleStatusChange = async (orderId, newStatus) => {
@@ -150,24 +165,24 @@ const AdminOrders = () => {
           );
         }
 
-        // const isPaid = record.paymentStatus === 'Đã thanh toán';
-        // const isFailed = record.paymentStatus === 'Thanh toán thất bại';
+        const isPaid = record.paymentStatus === 'Đã thanh toán';
+        const isFailed = record.paymentStatus === 'Thanh toán thất bại';
 
-        // let color = 'gold';
-        // let statusText = 'Chờ thanh toán';
+        let color = 'gold';
+        let statusText = 'Chờ thanh toán';
 
-        // if (isPaid) {
-        //   color = 'green';
-        //   statusText = 'Đã thanh toán';
-        // } else if (isFailed) {
-        //   color = 'red';
-        //   statusText = 'Thanh toán thất bại';
-        // }
+        if (isPaid) {
+          color = 'green';
+          statusText = 'Đã thanh toán';
+        } else if (isFailed) {
+          color = 'red';
+          statusText = 'Thanh toán thất bại';
+        }
 
         return (
           <div>
             <div className="font-medium text-gray-700">Chuyển khoản QR</div>
-            {/* <Tag color={color} className="mt-1">{statusText}</Tag> */}
+            <Tag color={color} className="mt-1">{statusText}</Tag>
           </div>
         );
       }

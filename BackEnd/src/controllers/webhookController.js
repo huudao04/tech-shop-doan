@@ -26,6 +26,18 @@ const handleSePayWebhook = async (req, res, titlePrefix = 'Thanh toán tự đ�
         });
       }
 
+      if (order.userId) {
+          io.to(order.userId.toString()).emit('order_payment_updated', {
+            orderId: order.orderId,
+            paymentStatus: 'Đã thanh toán'
+          });
+        }
+
+      io.to('admin').emit('admin_order_updated', {
+          orderId: order.orderId,
+          paymentStatus: 'Đã thanh toán'
+        });
+
       await Notification.create({
         title: titlePrefix,
         message: `Đơn hàng ${order.orderId} đã nhận tiền tự động qua SePay.`,
