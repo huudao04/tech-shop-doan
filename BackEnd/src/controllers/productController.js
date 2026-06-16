@@ -371,3 +371,51 @@ export const matchImages = async (req, res) => {
     return res.status(500).json({ success: false, message: 'Lỗi hệ thống trong quá trình đồng bộ kho ảnh' });
   }
 };
+
+// Thêm API xóa hàng loạt sản phẩm
+export const deleteProductsBulk = async (req, res) => {
+  try {
+    const { ids } = req.body; // Nhận mảng [id1, id2, id3...] từ Frontend
+    
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ success: false, message: 'Danh sách ID sản phẩm không hợp lệ' });
+    }
+
+    // 1. Lấy thông tin các sản phẩm để bóc tách ảnh cần xóa trên Cloudinary
+    const products = await Product.find({ _id: { $in: ids } });
+    
+    let allCloudinaryPublicIds = [];
+    products.forEach(product => {
+      if (product.image && product.image.length > 0) {
+        product.image.forEach(imageUrl => {
+          if (imageUrl.includes('cloudinary.com')) {
+            const publicId = extractPublicIdFromCloudinaryUrl(imageUrl);
+            if (publicId) allCloudinaryPublicIds.push(publicId);
+          }
+        });
+      }
+    });
+
+    // 2. Tiến hành xóa ảnh trên Cloudinary nếu có
+    if (allCloudinaryPublicIds.length > 0) {
+      try {
+        // Cloudinary hỗ trợ xóa tối đa 100 public_id cùng lúc bằng phương thức destroy/delete_resources
+        await cloudinary.api.delete_resources(allCloudinaryPublicIds);
+      } catch (err) {
+        console.error('Lỗi khi xóa hàng loạt ảnh trên Cloudinary:', err);
+        // Không return lỗi ở đây để tiếp tục giải phóng DB nếu ảnh có trục trặc
+      }
+    }
+
+    // 3. Xóa các sản phẩm khỏi Database
+    const result = await Product.deleteMany({ _id: { $in: ids } });
+
+    return res.json({ 
+      success: true, 
+      message: `Đã xóa thành công ${result.deletedCount} sản phẩm và các ảnh liên quan!` 
+    });
+  } catch (error) {
+    console.error('Bulk delete products error:', error);
+    return res.status(500).json({ success: false, message: 'Không thể thực hiện xóa hàng loạt sản phẩm' });
+  }
+};

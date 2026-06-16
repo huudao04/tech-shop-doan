@@ -8,7 +8,8 @@ import {
   deleteProduct,
   searchSuggest,
   importProductsExcel,
-  matchImages
+  matchImages,
+  deleteProductsBulk
 } from '../controllers/productController.js';
 import { addProductReview } from '../controllers/reviewController.js';
 import { authMiddleware, adminMiddleware } from '../middlewares/auth.js';
@@ -26,5 +27,6 @@ router.post('/:productId/reviews', authMiddleware, addProductReview);
 router.get('/:id', getProductById);
 router.put('/:id', authMiddleware, adminMiddleware, upload.array('image', 5), updateProduct);
 router.delete('/:id', authMiddleware, adminMiddleware, deleteProduct);
+router.post('/bulk-delete', authMiddleware, adminMiddleware, deleteProductsBulk);
 
 export default router;

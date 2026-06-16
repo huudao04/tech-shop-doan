@@ -23,6 +23,9 @@ const AdminProducts = () => {
   const [importedProducts, setImportedProducts] = useState([]);
   const [bulkImagesFileList, setBulkImagesFileList] = useState([]);
   const [uploadingImages, setUploadingImages] = useState(false);
+  const [isBulkMode, setIsBulkMode] = useState(false); 
+  const [selectedRowKeys, setSelectedRowKeys] = useState([]);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   const [filters, setFilters] = useState({
     search: '',
@@ -106,6 +109,23 @@ const AdminProducts = () => {
       setFileList([]);
     }
     setIsModalOpen(true);
+  };
+
+  const handleBulkDelete = async () => {
+    setBulkDeleting(true);
+    try {
+      const res = await API.post('/api/products/bulk-delete', { ids: selectedRowKeys });
+      if (res.data.success) {
+        message.success(res.data.message);
+        setSelectedRowKeys([]); // Reset danh sách đã chọn
+        setIsBulkMode(false); // Tắt chế độ chọn hàng loạt
+        fetchProducts(); // Tải lại danh sách
+      }
+    } catch (error) {
+      message.error(error.response?.data?.message || 'Có lỗi xảy ra khi xóa hàng loạt sản phẩm');
+    } finally {
+      setBulkDeleting(false);
+    }
   };
 
  const handleImportExcel = async (file) => {
@@ -281,6 +301,13 @@ const handleRemoveImage = (uid) => {
   setFileList(filtered);
 };
 
+const rowSelection = {
+    selectedRowKeys,
+    onChange: (newSelectedRowKeys) => {
+      setSelectedRowKeys(newSelectedRowKeys);
+    },
+  };
+
   const columns = [
     { 
       title: 'Tên sản phẩm',
@@ -331,6 +358,41 @@ const handleRemoveImage = (uid) => {
         <Title level={2} style={{ margin: 0 }}>Quản Lý Hệ Thống Sản Phẩm</Title>
 
         <Space size="middle">
+          {!isBulkMode ? (
+            <Button 
+              danger 
+              icon={<DeleteOutlined />} 
+              onClick={() => setIsBulkMode(true)}
+            >
+              Chọn xóa nhiều
+            </Button>
+          ) : (
+            <Space>
+              <Popconfirm
+                title="Xóa các sản phẩm đã chọn"
+                description={`Bạn có chắc chắn muốn xóa ${selectedRowKeys.length} sản phẩm này không?`}
+                onConfirm={handleBulkDelete}
+                disabled={selectedRowKeys.length === 0}
+                okText="Xóa tất cả"
+                cancelText="Hủy"
+                okButtonProps={{ danger: true, loading: bulkDeleting }}
+              >
+                <Button 
+                  type="primary" 
+                  danger 
+                  icon={<DeleteOutlined />} 
+                  disabled={selectedRowKeys.length === 0}
+                >
+                  Xác nhận xóa ({selectedRowKeys.length})
+                </Button>
+              </Popconfirm>
+              
+              <Button onClick={() => { setIsBulkMode(false); setSelectedRowKeys([]); }}>
+                Hủy chọn
+              </Button>
+            </Space>
+          )}
+
           <Button 
             type="default" 
             icon={<DownloadOutlined />} 
@@ -422,6 +484,7 @@ const handleRemoveImage = (uid) => {
         dataSource={products} 
         columns={columns} 
         rowKey="_id"
+        rowSelection={isBulkMode ? rowSelection : undefined}
         pagination={{
         current: filters.page,
         pageSize: filters.limit,
