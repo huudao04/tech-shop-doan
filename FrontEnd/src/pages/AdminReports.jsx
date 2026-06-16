@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Col, Row, Statistic, Button, Spin, message, Typography } from 'antd';
+import { Card, Col, Row, Statistic, Button, Spin, message, Typography, Dropdown } from 'antd';
 import { 
   BarChart, 
   Bar, 
@@ -63,20 +63,28 @@ const AdminReports = () => {
     fetchReportData();
   }, []);
 
-  const handleExportExcel = async () => {
+  const handleExportExcel = async (timeRange) => {
     try {
-      message.loading({ content: 'Đang khởi tạo file Excel...', key: 'export' });
-      const response = await API.get('/api/admin/export-reports', { responseType: 'blob' });
+      setExportLoading(true);
+      
+      let rangeLabel = '1 Tháng';
+      if (timeRange === '6months') rangeLabel = '6 Tháng';
+      if (timeRange === '1year') rangeLabel = '1 Năm';
+
+      message.loading({ content: `Đang khởi tạo báo cáo phân tích chiến lược ${rangeLabel}...`, key: 'export' });
+      
+      // Gửi kèm query param ?range=... lên server
+      const response = await API.get(`/api/admin/export-reports?range=${timeRange}`, { responseType: 'blob' });
       
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', `Bao_Cao_Doanh_Thu_TechShop_${Date.now()}.xlsx`);
+      link.setAttribute('download', `Bao_Cao_Tong_Hop_TechShop_${timeRange}_${Date.now()}.xlsx`);
       document.body.appendChild(link);
       link.click();
       link.remove();
       
-      message.success({ content: 'Tải báo cáo Excel thành công!', key: 'export', duration: 2 });
+      message.success({ content: `Tải báo cáo ${rangeLabel} thành công!`, key: 'export', duration: 3 });
     } catch (error) {
       console.error(error);
       message.error({ content: 'Xuất file Excel thất bại!', key: 'export' });
@@ -84,6 +92,25 @@ const AdminReports = () => {
       setExportLoading(false);
     }
   };
+
+  // Cấu hình các item hiển thị trong Dropdown menu của Antd
+  const exportMenuItems = [
+    {
+      key: '1month',
+      label: 'Báo cáo 1 tháng gần nhất',
+      onClick: () => handleExportExcel('1month'),
+    },
+    {
+      key: '6months',
+      label: 'Báo cáo 6 tháng gần nhất',
+      onClick: () => handleExportExcel('6months'),
+    },
+    {
+      key: '1year',
+      label: 'Báo cáo chiến lược 1 năm',
+      onClick: () => handleExportExcel('1year'),
+    },
+  ];
 
   if (loading) {
     return (
@@ -106,16 +133,19 @@ const AdminReports = () => {
             Phân tích chuyên sâu về chỉ số doanh thu thực tế và tần suất đơn hàng theo thời gian thực.
           </p>
         </div>
-        <Button 
-          type="primary" 
-          icon={<DownloadOutlined />} 
-          size="large"
-          onClick={handleExportExcel}
-          loading={exportLoading}
-          style={{ backgroundColor: '#10b981', borderColor: '#10b981', fontWeight: 600, borderRadius: '6px' }}
-        >
-          Xuất file Excel
-        </Button>
+        
+        {/* Nâng cấp từ Button đơn lẻ thành Dropdown Menu tuyển chọn thời gian */}
+        <Dropdown menu={{ items: exportMenuItems }} placement="bottomRight" arrow>
+          <Button 
+            type="primary" 
+            icon={<DownloadOutlined />} 
+            size="large"
+            loading={exportLoading}
+            style={{ backgroundColor: '#10b981', borderColor: '#10b981', fontWeight: 600, borderRadius: '6px' }}
+          >
+            Xuất file Excel báo cáo ▼
+          </Button>
+        </Dropdown>
       </div>
 
       {/* Thẻ số liệu tổng hợp đầu trang Report */}

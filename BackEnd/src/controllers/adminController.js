@@ -93,44 +93,252 @@ export const getReportsChart = async (req, res) => {
 
 export const exportReports = async (req, res) => {
   try {
-    const orders = await Order.find({
+    const { range } = req.query;
+    
+    let startDate = new Date();
+    let monthsDivider = 1;
+    let rangeText = '1 Tháng Gần Nhất';
+    let timeGroupType = 'day'; // 'day' cho 1 tháng, 'month' cho 6 tháng/1 năm
+
+    if (range === '6months') {
+      startDate.setMonth(startDate.getMonth() - 6);
+      monthsDivider = 6;
+      rangeText = '6 Tháng Gần Nhất';
+      timeGroupType = 'month';
+    } else if (range === '1year') {
+      startDate.setFullYear(startDate.getFullYear() - 1);
+      monthsDivider = 12;
+      rangeText = '1 Năm Gần Nhất';
+      timeGroupType = 'month';
+    } else {
+      startDate.setMonth(startDate.getMonth() - 1);
+      monthsDivider = 1;
+      rangeText = '1 Tháng Gần Nhất';
+      timeGroupType = 'day';
+    }
+
+    const validOrders = await Order.find({
+      createdAt: { $gte: startDate },
       $or: [{ paymentStatus: 'Đã thanh toán' }, { status: 'Đã nhận' }]
-    }).sort({ createdAt: -1 });
+    }).sort({ createdAt: 1 }); // Sắp xếp tăng dần theo thời gian để chạy timeline cho chuẩn
 
-    const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet('Báo cáo Doanh thu TechShop');
+    const totalProducts = await Product.countDocuments();
+    const totalOrdersInPeriod = validOrders.length;
+    const totalRevenue = validOrders.reduce((sum, o) => sum + (o.totalPrice || 0), 0);
+    const pendingOrders = await Order.countDocuments({
+      createdAt: { $gte: startDate },
+      paymentStatus: 'Chờ thanh toán',
+      status: { $ne: 'Hủy đơn hàng' }
+    });
 
-    worksheet.columns = [
-      { header: 'Mã Đơn Hàng', key: 'orderId', width: 15 },
-      { header: 'Tên Khách Hàng', key: 'customerName', width: 25 },
-      { header: 'Số Điện Thoại', key: 'phoneNumber', width: 15 },
-      { header: 'Phương Thức', key: 'paymentMethod', width: 15 },
-      { header: 'Tổng Tiền (VNĐ)', key: 'totalPrice', width: 20 },
-      { header: 'Trạng Thái Đơn', key: 'status', width: 15 },
-      { header: 'Thanh Toán', key: 'paymentStatus', width: 18 },
-      { header: 'Ngày Tạo', key: 'createdAt', width: 20 }
-    ];
-    worksheet.getRow(1).font = { bold: true };
+    // Cấu trúc dữ liệu nâng cao phân tích sản phẩm và dòng thời gian
+    // Cấu trúc dữ liệu phân tích sản phẩm và dòng thời gian
+    const productMap = {};
+    const timelineMap = {}; // Dùng cho Tab 2
 
-    orders.forEach((order) => {
-      worksheet.addRow({
-        orderId: order.orderId,
-        customerName: order.customerName,
-        phoneNumber: order.phoneNumber,
-        paymentMethod: order.paymentMethod === 'BANK_TRANSFER' ? 'Chuyển khoản' : 'COD',
-        totalPrice: order.totalPrice,
-        status: order.status,
-        paymentStatus: order.paymentStatus,
-        createdAt: new Date(order.createdAt).toLocaleString('vi-VN')
+    validOrders.forEach((order) => {
+      const orderDate = new Date(order.createdAt);
+      
+      // Định dạng khóa tiêu đề nhóm thời gian cho Tab 2
+      let timeKey = '';
+      if (timeGroupType === 'day') {
+        timeKey = orderDate.toLocaleDateString('vi-VN'); // "16/06/2026"
+      } else {
+        timeKey = `Tháng ${orderDate.getMonth() + 1}/${orderDate.getFullYear()}`; // "Tháng 6/2026"
+      }
+
+      if (!timelineMap[timeKey]) {
+        timelineMap[timeKey] = [];
+      }
+
+      order.items.forEach((item) => {
+        const pId = item.productId.toString();
+        const itemPrice = item.price || 0;
+        const itemQty = item.quantity || 0;
+        const itemRevenue = itemPrice * itemQty;
+
+        // Tính toán cho Tab 1 (Tổng hợp ma trận hiệu suất)
+        if (!productMap[pId]) {
+          productMap[pId] = { name: item.name, price: itemPrice, totalQty: 0, totalRevenue: 0 };
+        }
+        productMap[pId].totalQty += itemQty;
+        productMap[pId].totalRevenue += itemRevenue;
+
+        // TÍNH TOÁN CHO TAB 2: Cập nhật exactTime bao gồm cả Ngày và Giờ đầy đủ
+        const formattedDate = orderDate.toLocaleDateString('vi-VN'); // Lấy "16/06/2026"
+        const formattedTime = orderDate.toLocaleTimeString('vi-VN'); // Lấy "23:15:30"
+        
+        timelineMap[timeKey].push({
+          productName: item.name,
+          qtySold: itemQty,
+          revenue: itemRevenue,
+          exactTime: `${formattedTime} - ${formattedDate}`, // KẾT QUẢ: "23:15:30 - 16/06/2026"
+          orderId: order.orderId
+        });
       });
     });
 
+    const topProducts = Object.values(productMap).sort((a, b) => b.totalRevenue - a.totalRevenue);
+
+    // Khởi tạo ExcelJS
+    const workbook = new ExcelJS.Workbook();
+
+    // ==========================================
+    // TAB 1: TỔNG QUAN & PHÂN PHÂN KHÚC CHIẾN LƯỢC
+    // ==========================================
+    const summarySheet = workbook.addWorksheet('Tổng Quan Chiến Lược');
+    summarySheet.mergeCells('A1:F1');
+    const titleCell = summarySheet.getCell('A1');
+    titleCell.value = `HỆ THỐNG PHÂN TÍCH KPI KINH DOANH SẢN PHẨM (${rangeText.toUpperCase()})`;
+    titleCell.font = { name: 'Arial', size: 14, bold: true, color: { argb: 'FFFFFFFF' } };
+    titleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E293B' } };
+    titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
+    summarySheet.getRow(1).height = 40;
+
+    // (Đoạn ghi KPI chính giữ nguyên cấu trúc cũ của bạn để đảm bảo số liệu tổng...)
+    summarySheet.getCell('A3').value = `Báo cáo xuất ngày: ${new Date().toLocaleString('vi-VN')}`;
+    const kpiData = [
+      ['Tổng số mã hàng hệ thống:', totalProducts, 'mặt hàng'],
+      ['Đơn hàng phát sinh hoàn thành:', totalOrdersInPeriod, 'đơn'],
+      ['Tổng doanh thu thực tế thu về:', totalRevenue, 'VNĐ'],
+      ['Đơn hàng chưa quyết toán (Tồn đọng):', pendingOrders, 'đơn']
+    ];
+    kpiData.forEach((kpi, idx) => {
+      const rNum = 5 + idx;
+      summarySheet.getCell(`A${rNum}`).value = kpi[0];
+      summarySheet.getCell(`B${rNum}`).value = kpi[1];
+      summarySheet.getCell(`A${rNum}`).font = { bold: true };
+      if(kpi[0].includes('doanh thu')) {
+        summarySheet.getCell(`B${rNum}`).font = { bold: true, color: { argb: 'FF10B981' } };
+        summarySheet.getCell(`B${rNum}`).numberFormat = '#,##0';
+      }
+    });
+
+    // Bảng phân tích ma trận doanh thu hàng hóa
+    const startRowTopProd = 11;
+    summarySheet.getCell(`A${startRowTopProd}`).value = 'MA TRẬN HIỆU SUẤT KINH DOANH (ĐÃ TÍCH HỢP GIÁ TRỊ MẶT HÀNG)';
+    summarySheet.getCell(`A${startRowTopProd}`).font = { bold: true, size: 11, color: { argb: 'FF3B82F6' } };
+
+    const prodHeaderRow = summarySheet.getRow(startRowTopProd + 1);
+    prodHeaderRow.values = ['Tên Sản Phẩm', 'Đơn Giá (VNĐ)', 'Tổng Đã Bán', 'Tổng Doanh Thu', 'Tốc Độ / Tháng', 'Đánh Giá Hiệu Suất Vận Hành'];
+    prodHeaderRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    prodHeaderRow.eachCell(c => { c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF3B82F6' } }; });
+
+    topProducts.forEach((prod, idx) => {
+      const currRow = summarySheet.getRow(startRowTopProd + 2 + idx);
+      const monthlyVelocity = parseFloat((prod.totalQty / monthsDivider).toFixed(1));
+      
+      // THUẬT TOÁN ĐÁNH GIÁ THÔNG MINH: Kết hợp giữa Giá trị đơn sản phẩm và Tốc độ bán
+      let performanceStatus = '';
+      if (prod.price >= 5000000) { // Sản phẩm giá trị cao (Hi-end)
+        if (monthlyVelocity >= 3) performanceStatus = '⭐ Siêu phẩm Hi-End (Doanh thu đột phá - Ưu tiên duy trì)';
+        else if (monthlyVelocity >= 1) performanceStatus = '📈 Hàng giá trị cao tiêu thụ ổn định';
+        else performanceStatus = '⚠️ Hàng cao cấp kén khách - Lưu kho ít tránh đọng vốn';
+      } else { // Sản phẩm phổ thông hoặc phụ kiện (Low/Mid-end)
+        if (monthlyVelocity >= 25) performanceStatus = '🔥 Phụ kiện bán cực chạy (Tốc độ xoay vòng kho nhanh)';
+        else if (monthlyVelocity >= 8) performanceStatus = '🛒 Sức mua đều đặn';
+        else performanceStatus = '❌ Hiệu suất kém - Cần giải phóng tồn kho';
+      }
+
+      currRow.values = [prod.name, prod.price, prod.totalQty, prod.totalRevenue, `${monthlyVelocity} sp/th`, performanceStatus];
+      currRow.getCell(2).numberFormat = '#,##0';
+      currRow.getCell(4).numberFormat = '#,##0';
+    });
+    summarySheet.columns = [{ width: 35 }, { width: 15 }, { width: 12 }, { width: 18 }, { width: 15 }, { width: 45 }];
+
+    // ==========================================
+    // TAB 2 (MỚI): PHÂN TÍCH TIẾN TRÌNH THỜI GIAN VÀ MẬT ĐỘ MUA BÁN
+    // ==========================================
+    const timelineSheet = workbook.addWorksheet('Dòng Thời Gian Mua Bán');
+    
+    timelineSheet.getCell('A1').value = `LỊCH SỬ PHÂN PHỐI SẢN PHẨM THEO MỐC THỜI GIAN VÀ BIÊN ĐỘ (${rangeText.toUpperCase()})`;
+    timelineSheet.getCell('A1').font = { bold: true, size: 12, color: { argb: 'FFFFFFFF' } };
+    timelineSheet.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF475569' } };
+    timelineSheet.mergeCells('A1:E1');
+    timelineSheet.getRow(1).height = 30;
+
+    let currentTimelineRow = 3;
+
+    // Duyệt qua từng mốc thời gian (Ngày hoặc Tháng) để tạo bảng con chi tiết
+    Object.keys(timelineMap).sort().forEach((timeBlock) => {
+      // Dòng tiêu đề cho mốc thời gian đó
+      timelineSheet.getCell(`A${currentTimelineRow}`).value = `MỐC THỜI GIAN: ${timeBlock}`;
+      timelineSheet.getCell(`A${currentTimelineRow}`).font = { bold: true, color: { argb: 'FF1E3A8A' } };
+      timelineSheet.mergeCells(`A${currentTimelineRow}:E${currentTimelineRow}`);
+      
+      // Header của bảng con
+      const subHeader = timelineSheet.getRow(currentTimelineRow + 1);
+      subHeader.values = ['Mã Đơn Gốc', 'Tên Sản Phẩm Được Bán', 'Số Lượng', 'Doanh Thu', 'Thời Gian Xuất Đơn Chi Tiết'];
+      subHeader.font = { bold: true, size: 10 };
+      subHeader.eachCell(c => { c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } }; });
+
+      let totalQtyInBlock = 0;
+      let totalRevInBlock = 0;
+
+      // Đổ dữ liệu các sản phẩm bán được trong ngày/tháng này
+      timelineMap[timeBlock].forEach((item) => {
+        currentTimelineRow += 1;
+        const row = timelineSheet.getRow(currentTimelineRow + 1);
+        row.values = [item.orderId, item.productName, item.qtySold, item.revenue, item.exactTime];
+        row.getCell(4).numberFormat = '#,##0';
+
+        totalQtyInBlock += item.qtySold;
+        totalRevInBlock += item.revenue;
+      });
+
+      // Dòng tổng kết cho khối thời gian đó giúp dễ theo dõi sản lượng tổng trong ngày/tháng
+      currentTimelineRow += 1;
+      const totalRow = timelineSheet.getRow(currentTimelineRow + 1);
+      totalRow.values = ['TỔNG CỘNG TRONG MỐC:', '', totalQtyInBlock, totalRevInBlock, ''];
+      totalRow.font = { bold: true, italic: true };
+      totalRow.getCell(4).numberFormat = '#,##0';
+
+      // Cách ra 2 dòng chuẩn bị cho mốc thời gian tiếp theo
+      currentTimelineRow += 3;
+    });
+
+    timelineSheet.columns = [{ width: 15 }, { width: 40 }, { width: 12 }, { width: 18 }, { width: 25 }];
+
+    // ==========================================
+    // TAB 3: CHI TIẾT ĐƠN HÀNG (Sổ cái kiểm toán)
+    // ==========================================
+    const orderSheet = workbook.addWorksheet('Sổ Chi Tiết Đơn Hàng');
+    orderSheet.columns = [
+      { header: 'Mã Đơn Hàng', key: 'orderId', width: 15 },
+      { header: 'Tên Khách Hàng', key: 'customerName', width: 22 },
+      { header: 'Số Điện Thoại', key: 'phoneNumber', width: 15 },
+      { header: 'Phương Thức', key: 'paymentMethod', width: 15 },
+      { header: 'Tổng Tiền (VNĐ)', key: 'totalPrice', width: 18 },
+      { header: 'Trạng Thái Đơn', key: 'status', width: 15 },
+      { header: 'Thanh Toán', key: 'paymentStatus', width: 18 },
+      { header: 'Ngày Tạo Đơn', key: 'createdAt', width: 20 }
+    ];
+    const headerRow = orderSheet.getRow(1);
+    headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    headerRow.eachCell(c => { c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF10B981' } }; });
+
+    validOrders.forEach((o) => {
+      const row = orderSheet.addRow({
+        orderId: o.orderId,
+        customerName: o.customerName,
+        phoneNumber: o.phoneNumber,
+        paymentMethod: o.paymentMethod === 'BANK_TRANSFER' ? 'Chuyển khoản' : 'COD',
+        totalPrice: o.totalPrice,
+        status: o.status,
+        paymentStatus: o.paymentStatus,
+        createdAt: new Date(o.createdAt).toLocaleString('vi-VN')
+      });
+      row.getCell('totalPrice').numberFormat = '#,##0';
+    });
+
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', 'attachment; filename=' + `Bao_Cao_Doanh_Thu_${Date.now()}.xlsx`);
+    res.setHeader('Content-Disposition', `attachment; filename=Bao_Cao_Chien_Luoc_TechShop_${range}_${Date.now()}.xlsx`);
     await workbook.xlsx.write(res);
     res.end();
+
   } catch (error) {
-    res.status(500).json({ message: 'Không thể tạo file báo cáo Excel' });
+    console.error('Lỗi phân tích báo cáo nâng cao:', error);
+    res.status(500).json({ message: 'Lỗi máy chủ khi kết xuất dữ liệu cấu trúc ma trận.' });
   }
 };
 
