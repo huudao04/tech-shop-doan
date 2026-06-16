@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@ant-design/icons": "^6.2.2",
+    "@hello-pangea/dnd": "^18.0.1",
     "@react-oauth/google": "^0.13.5",
     "antd": "^6.3.7",
     "axios": "^1.16.1",

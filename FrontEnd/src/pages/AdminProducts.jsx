@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
+import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { Table, Button, Typography, Modal, Form, Input, InputNumber, Select, message, Space, Upload, Popconfirm, Card } from 'antd';
-import { PlusOutlined, DeleteOutlined, EditOutlined, SearchOutlined } from '@ant-design/icons';
+import { PlusOutlined, DeleteOutlined, EditOutlined, SearchOutlined, DownloadOutlined, UploadOutlined, MenuOutlined } from '@ant-design/icons';
 import API from '../utils/axiosClient';
 import { getImageUrl } from '../utils/imageUrl.js';
 
@@ -8,14 +9,20 @@ const { Title } = Typography;
 
 const AdminProducts = () => {
   const [products, setProducts] = useState([]);
-  const [categories, setCategories] = useState([]); // Danh mục từ collection categories
-  const [brands, setBrands] = useState([]);         // Thương hiệu từ collection brands
+  const [categories, setCategories] = useState([]);
+  const [brands, setBrands] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null); 
-  const [fileList, setFileList] = useState([]); // Quản lý file ảnh đang chọn trên giao diện Form
+  const [fileList, setFileList] = useState([]);
   const [saving, setSaving] = useState(false);
+  const [excelFile, setExcelFile] = useState(null);
+  const [importing, setImporting] = useState(false);
   const [deletingProductId, setDeletingProductId] = useState(null);
   const [form] = Form.useForm();
+  const [isImageModalOpen, setIsImageModalOpen] = useState(false);
+  const [importedProducts, setImportedProducts] = useState([]);
+  const [bulkImagesFileList, setBulkImagesFileList] = useState([]);
+  const [uploadingImages, setUploadingImages] = useState(false);
 
   const [filters, setFilters] = useState({
     search: '',
@@ -101,6 +108,99 @@ const AdminProducts = () => {
     setIsModalOpen(true);
   };
 
+ const handleImportExcel = async (file) => {
+  if (!file) return;
+  
+  const formData = new FormData();
+  formData.append('excelFile', file);
+
+  setImporting(true);
+  try {
+    const response = await API.post('/api/products/import-excel', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      responseType: 'blob' // 🌟 QUAN TRỌNG: Bảo bảo axios nhận dữ liệu dạng Blob/Binary để xử lý file trả về
+    });
+
+    // Nếu Backend xử lý hoàn toàn thành công (Không có dòng dữ liệu nào lỗi)
+    // Vì dùng responseType: 'blob' nên response.data lúc này là một chuỗi Blob, cần chuyển sang JSON text để đọc
+    const text = await response.data.text();
+    const result = JSON.parse(text);
+
+    if (result.success) {
+      message.success(result.message);
+      setImportedProducts(result.products || []);
+      setBulkImagesFileList([]); 
+      setIsImageModalOpen(true);  
+    } else {
+      message.error(result.message || 'Import thất bại');
+    }
+  } catch (error) {
+    console.error('Lỗi import excel:', error);
+    
+    // 🌟 XỬ LÝ KHI CÓ DÒNG BỊ LỖI (Backend trả về mã lỗi kèm file Excel Buffer)
+    if (error.response && (error.response.status === 422 || error.response.data instanceof Blob)) {
+      try {
+        const blobData = error.response.data; // Đây chính là file Excel lỗi nhị phân từ BE gửi về
+        
+        // Tạo một đường dẫn URL ảo cho file blob dữ liệu
+        const url = window.URL.createObjectURL(new Blob([blobData]));
+        const link = document.createElement('a');
+        link.href = url;
+        
+        // Ép trình duyệt đặt tên và tải file lỗi này về máy Admin
+        link.setAttribute('download', 'File_Loi_Import_San_Pham.xlsx');
+        document.body.appendChild(link);
+        link.click();
+        
+        // Dọn dẹp bộ nhớ
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+
+        message.error('File Excel chứa dữ liệu không hợp lệ! Hệ thống đã tự động tải về file báo lỗi chi tiết, vui lòng mở lên kiểm tra.');
+      } catch (err) {
+        message.error('Có lỗi xảy ra khi tải file báo cáo lỗi.');
+      }
+    } else {
+      // Các lỗi hệ thống khác (500, lỗi mạng, mạng treo)
+      message.error('Có lỗi xảy ra trong quá trình kết nối gửi file.');
+    }
+  } finally {
+    setImporting(false);
+    setExcelFile(null);
+  }
+};
+
+  const handleUploadBulkImages = async () => {
+  if (bulkImagesFileList.length === 0) {
+    message.warning('Vui lòng chọn hoặc kéo thả ít nhất một file ảnh!');
+    return;
+  }
+
+  const formData = new FormData();
+  bulkImagesFileList.forEach(file => {
+    formData.append('bulkImageFiles', file.originFileObj);
+  });
+
+  setUploadingImages(true);
+  try {
+    const response = await API.post('/api/products/match-images', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+
+    if (response.data.success) {
+      message.success(response.data.message);
+      setIsImageModalOpen(false);
+      setBulkImagesFileList([]);
+      fetchProducts();
+    }
+  } catch (error) {
+    console.error('Lỗi upload kho ảnh:', error);
+    message.error(error.response?.data?.message || 'Có lỗi khi đồng bộ kho ảnh');
+  } finally {
+    setUploadingImages(false);
+  }
+};
+
   const onFinish = async (values) => {
     setSaving(true);
     try {
@@ -164,6 +264,22 @@ const AdminProducts = () => {
       setDeletingProductId(null);
     }
   };
+  const handleDragEnd = (result) => {
+  if (!result.destination) return; // Nếu kéo ra ngoài vùng hợp lệ thì bỏ qua
+
+  const items = Array.from(fileList);
+  // Cắt file từ vị trí cũ và chèn vào vị trí mới
+  const [reorderedItem] = items.splice(result.source.index, 1);
+  items.splice(result.destination.index, 0, reorderedItem);
+
+  setFileList(items); // Cập nhật lại thứ tự mảng fileList
+};
+
+// Hàm hỗ trợ xóa một ảnh cụ thể ra khỏi danh sách khi tự render
+const handleRemoveImage = (uid) => {
+  const filtered = fileList.filter(item => item.uid !== uid);
+  setFileList(filtered);
+};
 
   const columns = [
     { 
@@ -213,18 +329,41 @@ const AdminProducts = () => {
     <div style={{ padding: '24px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
         <Title level={2} style={{ margin: 0 }}>Quản Lý Hệ Thống Sản Phẩm</Title>
-         <Button 
-          type="primary" 
-          icon={<PlusOutlined />} 
-          size="middle"
-          onClick={handleAddClick}
-        >
-          Thêm sản phẩm mới
-        </Button>
+
+        <Space size="middle">
+          <Button 
+            type="default" 
+            icon={<DownloadOutlined />} 
+            href="/Template_Import_San_Pham.xlsx"
+            download="Template_Import_San_Pham.xlsx"     
+          >
+            Tải file mẫu Excel
+          </Button>
+
+          <Upload
+            accept=".xlsx, .xls"
+            beforeUpload={(file) => {
+              setExcelFile(file);
+              handleImportExcel(file);
+              return false; 
+            }}
+            showUploadList={false}
+          >
+            <Button icon={<UploadOutlined />} loading={importing}>
+              Import Excel sản phẩm
+            </Button>
+          </Upload>
+
+          <Button 
+            type="primary" 
+            icon={<PlusOutlined />} 
+            onClick={handleAddClick}
+          >
+            Thêm sản phẩm mới
+          </Button>
+        </Space>
       </div>
      
-     
-      {/* 🌟 BỘ LỌC ĐẦY ĐỦ CHO ADMIN */}
       <Card style={{ marginBottom: '20px', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }} bodyStyle={{ padding: '12px 16px' }}>
         <Space direction="horizontal" wrap size="small">
           <Input.Search
@@ -338,27 +477,213 @@ const AdminProducts = () => {
             </Select>
           </Form.Item>
 
-          <Form.Item label="Hình ảnh sản phẩm (Có thể chọn nhiều ảnh)">
+          <Form.Item label="Hình ảnh sản phẩm (Kéo thả để sắp xếp vị trí hiển thị, ảnh đầu tiên sẽ làm ảnh đại diện)">
+            {/* Cấu hình nút bấm chọn file ẩn danh sách mặc định của antd */}
             <Upload
               listType="picture-card"
               fileList={fileList}
               onChange={({ fileList: newFileList }) => setFileList(newFileList)}
               beforeUpload={() => false}
               multiple={true}
+              showUploadList={false} // 🌟 BẮT BUỘC: Ẩn danh sách cũ đi để tự render kéo thả
             >
               {fileList.length < 8 && (
                 <div>
                   <PlusOutlined />
-                  <div style={{ marginTop: 8 }}>Chọn file ảnh</div>
+                  <div style={{ marginTop: 8 }}>Thêm ảnh mới</div>
                 </div>
               )}
             </Upload>
+
+            {/* Khởi chạy không gian Kéo & Thả */}
+            {fileList.length > 0 && (
+              <DragDropContext onDragEnd={handleDragEnd}>
+                <Droppable droppableId="images-grid" direction="horizontal">
+                  {(provided) => (
+                    <div 
+                      {...provided.droppableProps} 
+                      ref={provided.innerRef}
+                      style={{ 
+                        display: 'flex', 
+                        flexWrap: 'wrap', 
+                        gap: '12px', 
+                        marginTop: '16px',
+                        background: '#fafafa',
+                        padding: '12px',
+                        borderRadius: '6px',
+                        border: '1px dashed #d9d9d9'
+                      }}
+                    >
+                      {fileList.map((file, index) => (
+                        <Draggable key={file.uid} draggableId={file.uid} index={index}>
+                          {(provided, snapshot) => (
+                            <div
+                              ref={provided.innerRef}
+                              {...provided.draggableProps}
+                              style={{
+                                userSelect: 'none',
+                                padding: '8px',
+                                width: '104px',
+                                height: '104px',
+                                background: '#fff',
+                                border: snapshot.isDragging ? '2px solid #1890ff' : '1px solid #d9d9d9',
+                                borderRadius: '4px',
+                                position: 'relative',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                boxShadow: snapshot.isDragging ? '0 4px 12px rgba(0,0,0,0.15)' : 'none',
+                                ...provided.draggableProps.style // Giữ nguyên style tính toán vị trí của thư viện
+                              }}
+                            >
+                              {/* Nút nhỏ góc trên bên phải để xóa ảnh nhanh */}
+                              <Button
+                                size="small"
+                                shape="circle"
+                                danger
+                                icon={<DeleteOutlined style={{ fontSize: '10px' }} />}
+                                onClick={() => handleRemoveImage(file.uid)}
+                                style={{
+                                  position: 'absolute',
+                                  top: '-6px',
+                                  right: '-6px',
+                                  zIndex: 10,
+                                  width: '20px',
+                                  height: '20px',
+                                  minWidth: '20px',
+                                  padding: 0
+                                }}
+                              />
+
+                              {/* Ảnh hiển thị */}
+                              <img
+                                src={file.url || (file.originFileObj ? URL.createObjectURL(file.originFileObj) : '')}
+                                alt="Xem trước"
+                                style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: '2px' }}
+                              />
+
+                              {/* Tay cầm dùng để rê chuột và kéo (Đặt đè lên góc ảnh dưới) */}
+                              <div
+                                {...provided.dragHandleProps}
+                                style={{
+                                  position: 'absolute',
+                                  bottom: '2px',
+                                  right: '2px',
+                                  background: 'rgba(0,0,0,0.4)',
+                                  color: '#fff',
+                                  padding: '2px 4px',
+                                  borderRadius: '2px',
+                                  cursor: 'move',
+                                  fontSize: '11px',
+                                  display: 'flex',
+                                  alignItems: 'center'
+                                }}
+                              >
+                                <MenuOutlined style={{ marginRight: '2px' }} />
+                                {index === 0 ? 'Chính' : index + 1}
+                              </div>
+                            </div>
+                          )}
+                        </Draggable>
+                      ))}
+                      {provided.placeholder}
+                    </div>
+                  )}
+                </Droppable>
+              </DragDropContext>
+            )}
           </Form.Item>
 
           <Form.Item label="Mô tả sản phẩm" name="description">
             <Input.TextArea rows={3} />
           </Form.Item>
         </Form>
+      </Modal>
+      
+      {/* 🌟 MODAL KÉO THẢ ẢNH HÀNG LOẠT THEO MÔ HÌNH 2 */}
+      <Modal
+        title="Đồng bộ kho ảnh sản phẩm vừa Import"
+        open={isImageModalOpen}
+        onCancel={() => {
+          setIsImageModalOpen(false);
+          fetchProducts(); // Vẫn fetch lại sản phẩm ngoài bảng dù tắt modal
+        }}
+        onOk={handleUploadBulkImages}
+        confirmLoading={uploadingImages}
+        okText="Bắt đầu đồng bộ ảnh"
+        cancelText="Để sau"
+        width={750}
+        destroyOnClose
+      >
+        <div style={{ marginBottom: '16px', padding: '12px', background: '#e6f7ff', border: '1px solid #91d5ff', borderRadius: '4px' }}>
+          <p style={{ margin: 0, fontWeight: 500, color: '#0050b3' }}>
+            🎉 Đã khởi tạo thành công bản nháp của <strong>{importedProducts.length}</strong> sản phẩm từ file Excel!
+          </p>
+          <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#595959' }}>
+            Hệ thống đang chờ bạn nạp các file ảnh cứng có tên khớp với tên bạn đã khai báo trong file Excel để kích hoạt hiển thị sản phẩm.
+          </p>
+        </div>
+
+        {/* Khu vực Kéo & Thả File ảnh của Ant Design */}
+        <div style={{ marginBottom: '20px' }}>
+          <Upload.Dragger
+            multiple={true}
+            listType="picture"
+            fileList={bulkImagesFileList}
+            accept="image/*"
+            beforeUpload={() => false} // Chặn không cho tự động upload đơn lẻ
+            onChange={({ fileList: newFileList }) => setBulkImagesFileList(newFileList)}
+          >
+            <p className="ant-upload-drag-icon" style={{ fontSize: '40px', color: '#1890ff' }}>
+              <UploadOutlined />
+            </p>
+            <p className="ant-upload-text" style={{ fontWeight: 600 }}>
+              Kéo thả toàn bộ ảnh sản phẩm vào đây hoặc click để chọn file
+            </p>
+            <p className="ant-upload-hint">
+              Hỗ trợ chọn nhiều file ảnh cùng một lúc (JPG, PNG, WEBP...). Hãy chắc chắn tên file ảnh trùng với tên file trong ô Excel.
+            </p>
+          </Upload.Dragger>
+        </div>
+
+        {/* Danh sách Check-list gợi ý tên file cần nạp để Admin đối chiếu trực quan */}
+        <div style={{ maxHeight: '180px', overflowY: 'auto', border: '1px solid #d9d9d9', borderRadius: '4px', padding: '12px' }}>
+          <span style={{ fontWeight: 600, display: 'block', marginBottom: '8px', color: '#262626' }}>
+            Danh sách các file ảnh hệ thống đang chờ khớp:
+          </span>
+          <ul style={{ paddingLeft: '20px', margin: 0, fontSize: '13px', color: '#8c8c8c' }}>
+            {importedProducts.map((prod, index) => (
+              <li key={index} style={{ marginBottom: '4px' }}>
+                <strong style={{ color: '#595959' }}>{prod.name}</strong>: {' '}
+                {prod.imageNamesPlaceholder && prod.imageNamesPlaceholder.length > 0 ? (
+                  prod.imageNamesPlaceholder.map((imgName, idx) => {
+                    // Kiểm tra xem Admin đã chọn file này vào list upload chưa để đổi màu trực quan
+                    const isSelected = bulkImagesFileList.some(f => f.name.toLowerCase().trim() === imgName.toLowerCase().trim());
+                    return (
+                      <span 
+                        key={idx} 
+                        style={{ 
+                          marginRight: '8px', 
+                          background: isSelected ? '#f6ffed' : '#fff1f0', 
+                          color: isSelected ? '#389e0d' : '#cf1322',
+                          border: isSelected ? '1px solid #b7eb8f' : '1px solid #ffa39e',
+                          padding: '2px 6px',
+                          borderRadius: '2px',
+                          fontSize: '12px',
+                          display: 'inline-block'
+                        }}
+                      >
+                        {imgName} {isSelected ? '✓' : ''}
+                      </span>
+                    );
+                  })
+                ) : (
+                  <span style={{ italic: 'true' }}>Không yêu cầu ảnh</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
       </Modal>
     </div>
   );

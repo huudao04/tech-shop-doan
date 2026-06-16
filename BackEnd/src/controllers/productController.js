@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import XLSX from 'xlsx';
 import Product from '../models/Product.js';
 import Category from '../models/Category.js';
 import Brand from '../models/Brand.js';
@@ -195,5 +196,178 @@ export const deleteProduct = async (req, res) => {
   } catch (error) {
     console.error('Delete product error:', error);
     return res.status(500).json({ success: false, message: 'Không thể xóa sản phẩm' });
+  }
+};
+export const importProductsExcel = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'Vui lòng tải lên file Excel' });
+    }
+
+    // 1. Đọc file Excel từ buffer
+    const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
+    const sheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[sheetName];
+    
+    // Chuyển thành JSON mảng để kiểm tra dữ liệu
+    const data = XLSX.utils.sheet_to_json(worksheet, { 
+      range: 3
+    });
+    
+    if (!data || data.length === 0) {
+      return res.status(400).json({ success: false, message: 'File Excel trống hoặc không đúng định dạng mẫu' });
+    }
+
+    const draftProducts = [];
+    const errorRows = []; // Mảng chứa các dòng bị lỗi để xuất file phản hồi nếu có
+    let hasError = false;
+
+    // 2. Duyệt qua từng dòng dữ liệu để thẩm định (Validation)
+    for (let i = 0; i < data.length; i++) {
+      const row = data[i];
+      const name = row["Tên sản phẩm (*)"];
+      const price = row["Giá (*)"];
+      const category = row["Danh mục (*)"];
+      const brand = row["Thương hiệu (*)"];
+      const stock = row["Số lượng (*)"];
+      const imageNamesString = row["Hình ảnh"];
+      const description = row["Mô tả sản phẩm"];
+
+      // Tạo một danh sách các lý do lỗi cho dòng hiện tại
+      let rowErrors = [];
+
+      if (!name) rowErrors.push("Thiếu tên sản phẩm");
+      if (!price || isNaN(Number(price)) || Number(price) <= 0) rowErrors.push("Giá phải là số và lớn hơn 0");
+      if (!category) rowErrors.push("Thiếu danh mục");
+      if (!brand) rowErrors.push("Thiếu thương hiệu");
+      if (stock !== undefined && (isNaN(Number(stock)) || Number(stock) < 0)) rowErrors.push("Số lượng phải là số không âm");
+
+      // Nếu dòng này có lỗi
+      if (rowErrors.length > 0) {
+        hasError = true;
+        // Sao chép lại dòng cũ và đính thêm cột "LÝ DO LỖI" ở cuối
+        errorRows.push({
+          ...row,
+          "LÝ DO LỖI (VUI LÒNG SỬA)": rowErrors.join(" | ")
+        });
+      } else {
+        // Nếu dòng này hợp lệ, đẩy vào danh sách chờ tạo dữ liệu nháp
+        let imagePlaceholders = [];
+        if (imageNamesString) {
+          imagePlaceholders = String(imageNamesString)
+            .split(',')
+            .map(img => img.trim().toLowerCase())
+            .filter(img => img !== "");
+        }
+
+        draftProducts.push({
+          name: String(name).trim(),
+          price: Number(price),
+          category: String(category).trim(),
+          brand: String(brand).trim(),
+          stock: Number(stock || 0),
+          image: [],
+          imageNamesPlaceholder: imagePlaceholders,
+          description: String(description || '').trim(),
+          status: imagePlaceholders.length > 0 ? 'draft' : 'active'
+        });
+      }
+    }
+
+    // 3. Xử lý phản hồi dựa trên kết quả kiểm tra lỗi
+    if (hasError) {
+      // Nếu có bất kỳ dòng nào lỗi, xuất ngược lại toàn bộ danh sách lỗi thành file Excel mới
+      const errorWorksheet = XLSX.utils.json_to_sheet(errorRows);
+      const errorWorkbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(errorWorkbook, errorWorksheet, "Danh_Sach_Loi");
+
+      // Ghi workbook vào bộ nhớ tạm buffer dạng nhị phân
+      const errorBuffer = XLSX.write(errorWorkbook, { type: 'buffer', bookType: 'xlsx' });
+
+      // Cấu hình Header trả về dạng file tải về (Attachment)
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', 'attachment; filename=File_Loi_Import_San_Pham.xlsx');
+      
+      // Gửi trả file Excel lỗi về cho Frontend
+      return res.status(422).send(errorBuffer);
+    }
+
+    // 4. Nếu toàn bộ file Excel hoàn hảo không lỗi, tiến hành lưu DB
+    if (draftProducts.length > 0) {
+      const savedProducts = await Product.insertMany(draftProducts);
+      return res.json({ 
+        success: true, 
+        message: `Đã nhập dữ liệu thành công! Khởi tạo bản nháp cho ${savedProducts.length} sản phẩm.`,
+        products: savedProducts 
+      });
+    }
+
+    return res.status(400).json({ success: false, message: 'Không tìm thấy dữ liệu hợp lệ để xử lý.' });
+
+  } catch (error) {
+    console.error('Lỗi khi xử lý import excel:', error);
+    return res.status(500).json({ success: false, message: 'Có lỗi xảy ra trong quá trình bóc tách file Excel' });
+  }
+};
+
+
+/**
+ * 🌟 API 2: Nhận kho ảnh cứng, upload Cloudinary và thực hiện so khớp tự động
+ * URL: POST /api/products/match-images
+ */
+export const matchImages = async (req, res) => {
+  try {
+    const files = req.files || []; // Đống file ảnh cứng nhận từ Multer thông qua Cloudinary storage
+    if (files.length === 0) {
+      return res.status(400).json({ success: false, message: 'Không tìm thấy file ảnh nào được gửi lên' });
+    }
+
+    // 1. Lấy toàn bộ danh sách sản phẩm đang ở trạng thái 'draft' để chuẩn bị đối chiếu
+    const draftProducts = await Product.find({ status: 'draft' });
+    if (draftProducts.length === 0) {
+      return res.status(400).json({ success: false, message: 'Không có sản phẩm bản nháp nào đang đợi ảnh' });
+    }
+
+    let matchCount = 0;
+
+    // 2. Duyệt qua từng sản phẩm nháp
+    for (let product of draftProducts) {
+      let updatedImages = [...product.image];
+      let placeholders = product.imageNamesPlaceholder || [];
+
+      // Duyệt xem trong đống file admin vừa upload lên, có cái nào khớp với placeholder không
+      for (const file of files) {
+        // Multer có thuộc tính originalname lưu tên gốc file dưới máy admin (VD: "Iphone15-Front.JPG")
+        const clientFileName = file.originalname.trim().toLowerCase();
+
+        // Kiểm tra xem tên file này có nằm trong danh sách mong đợi của sản phẩm không
+        if (placeholders.includes(clientFileName)) {
+          // Nếu khớp, nhét URL thật từ Cloudinary (file.path) vào mảng image
+          if (!updatedImages.includes(file.path)) {
+            updatedImages.push(file.path);
+          }
+          matchCount++;
+        }
+      }
+
+      // 3. Kiểm tra xem đã gom đủ ảnh cho sản phẩm này chưa
+      // Nếu mảng ảnh thật thu thập được đã bằng hoặc lớn hơn số lượng tên ảnh khai báo trong Excel
+      if (updatedImages.length >= placeholders.length && placeholders.length > 0) {
+        product.status = 'active'; // Kích hoạt hiển thị sản phẩm ra trang chủ
+        product.imageNamesPlaceholder = []; // Xóa mảng nháp để dọn rác dữ liệu
+      }
+
+      product.image = updatedImages;
+      await product.save();
+    }
+
+    return res.json({
+      success: true,
+      message: `Đồng bộ ảnh hoàn tất! Đã so khớp thành công ${matchCount} file ảnh vào các sản phẩm tương ứng.`
+    });
+
+  } catch (error) {
+    console.error('Lỗi khi so khớp ảnh:', error);
+    return res.status(500).json({ success: false, message: 'Lỗi hệ thống trong quá trình đồng bộ kho ảnh' });
   }
 };
