@@ -5,7 +5,14 @@ export const genAI = process.env.GEMINI_API_KEY
   ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
   : null;
 
-export const GEMINI_MODEL_CANDIDATES = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash'];
+export const GEMINI_MODEL_CANDIDATES = 
+  [
+    'gemini-2.5-flash', 
+    'gemini-2.5-flash-lite', 
+    'gemini-2.0-flash',
+    'gemini-3.5-flash-lite',
+    'gemini-3.5-flash',
+  ];
 
 export const EMBEDDING_MODEL_CANDIDATES = Array.from(new Set([
   process.env.EMBEDDING_MODEL,
