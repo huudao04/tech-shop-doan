@@ -98,7 +98,7 @@ export const exportReports = async (req, res) => {
     let startDate = new Date();
     let monthsDivider = 1;
     let rangeText = '1 Tháng Gần Nhất';
-    let timeGroupType = 'day'; // 'day' cho 1 tháng, 'month' cho 6 tháng/1 năm
+    let timeGroupType = 'day'; 
 
     if (range === '6months') {
       startDate.setMonth(startDate.getMonth() - 6);
@@ -120,7 +120,7 @@ export const exportReports = async (req, res) => {
     const validOrders = await Order.find({
       createdAt: { $gte: startDate },
       $or: [{ paymentStatus: 'Đã thanh toán' }, { status: 'Đã nhận' }]
-    }).sort({ createdAt: 1 }); // Sắp xếp tăng dần theo thời gian để chạy timeline cho chuẩn
+    }).sort({ createdAt: 1 });
 
     const totalProducts = await Product.countDocuments();
     const totalOrdersInPeriod = validOrders.length;
@@ -131,20 +131,25 @@ export const exportReports = async (req, res) => {
       status: { $ne: 'Hủy đơn hàng' }
     });
 
-    // Cấu trúc dữ liệu nâng cao phân tích sản phẩm và dòng thời gian
-    // Cấu trúc dữ liệu phân tích sản phẩm và dòng thời gian
+    // LẤY THÔNG TIN GIÁ NHẬP TỪ DATABASE ĐỂ TÍNH LỢI NHUẬN
+    // Tạo map { [productId]: costPrice } để truy xuất với độ phức tạp O(1)
+    const allProducts = await Product.find({}, '_id costPrice');
+    const costPriceMap = {};
+    allProducts.forEach(p => {
+      costPriceMap[p._id.toString()] = p.costPrice || 0;
+    });
+
     const productMap = {};
-    const timelineMap = {}; // Dùng cho Tab 2
+    const timelineMap = {}; 
 
     validOrders.forEach((order) => {
       const orderDate = new Date(order.createdAt);
       
-      // Định dạng khóa tiêu đề nhóm thời gian cho Tab 2
       let timeKey = '';
       if (timeGroupType === 'day') {
-        timeKey = orderDate.toLocaleDateString('vi-VN'); // "16/06/2026"
+        timeKey = orderDate.toLocaleDateString('vi-VN'); 
       } else {
-        timeKey = `Tháng ${orderDate.getMonth() + 1}/${orderDate.getFullYear()}`; // "Tháng 6/2026"
+        timeKey = `Tháng ${orderDate.getMonth() + 1}/${orderDate.getFullYear()}`; 
       }
 
       if (!timelineMap[timeKey]) {
@@ -156,29 +161,47 @@ export const exportReports = async (req, res) => {
         const itemPrice = item.price || 0;
         const itemQty = item.quantity || 0;
         const itemRevenue = itemPrice * itemQty;
+        
+        // Lấy giá nhập từ map, nếu không có thì mặc định bằng 0 hoặc dùng giá bán tùy logic
+        const itemCostPrice = costPriceMap[pId] !== undefined ? costPriceMap[pId] : 0;
+        const itemTotalCost = itemCostPrice * itemQty;
+        const itemProfit = itemRevenue - itemTotalCost;
 
-        // Tính toán cho Tab 1 (Tổng hợp ma trận hiệu suất)
+        // Tính toán cho Tab 1 & Tab mới (Phân tích lợi nhuận)
         if (!productMap[pId]) {
-          productMap[pId] = { name: item.name, price: itemPrice, totalQty: 0, totalRevenue: 0 };
+          productMap[pId] = { 
+            name: item.name, 
+            price: itemPrice, 
+            costPrice: itemCostPrice, // Lưu thêm giá nhập vào map
+            totalQty: 0, 
+            totalRevenue: 0,
+            totalCost: 0,
+            totalProfit: 0
+          };
         }
         productMap[pId].totalQty += itemQty;
         productMap[pId].totalRevenue += itemRevenue;
+        productMap[pId].totalCost += itemTotalCost;
+        productMap[pId].totalProfit += itemProfit;
 
-        // TÍNH TOÁN CHO TAB 2: Cập nhật exactTime bao gồm cả Ngày và Giờ đầy đủ
-        const formattedDate = orderDate.toLocaleDateString('vi-VN'); // Lấy "16/06/2026"
-        const formattedTime = orderDate.toLocaleTimeString('vi-VN'); // Lấy "23:15:30"
+        const formattedDate = orderDate.toLocaleDateString('vi-VN'); 
+        const formattedTime = orderDate.toLocaleTimeString('vi-VN'); 
         
         timelineMap[timeKey].push({
           productName: item.name,
           qtySold: itemQty,
           revenue: itemRevenue,
-          exactTime: `${formattedTime} - ${formattedDate}`, // KẾT QUẢ: "23:15:30 - 16/06/2026"
+          exactTime: `${formattedTime} - ${formattedDate}`, 
           orderId: order.orderId
         });
       });
     });
 
     const topProducts = Object.values(productMap).sort((a, b) => b.totalRevenue - a.totalRevenue);
+
+    // Tính tổng lợi nhuận gộp toàn hệ thống trong kỳ báo cáo
+    const totalCostAll = topProducts.reduce((sum, p) => sum + p.totalCost, 0);
+    const totalProfitAll = topProducts.reduce((sum, p) => sum + p.totalProfit, 0);
 
     // Khởi tạo ExcelJS
     const workbook = new ExcelJS.Workbook();
@@ -195,7 +218,6 @@ export const exportReports = async (req, res) => {
     titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
     summarySheet.getRow(1).height = 40;
 
-    // (Đoạn ghi KPI chính giữ nguyên cấu trúc cũ của bạn để đảm bảo số liệu tổng...)
     summarySheet.getCell('A3').value = `Báo cáo xuất ngày: ${new Date().toLocaleString('vi-VN')}`;
     const kpiData = [
       ['Tổng số mã hàng hệ thống:', totalProducts, 'mặt hàng'],
@@ -214,7 +236,6 @@ export const exportReports = async (req, res) => {
       }
     });
 
-    // Bảng phân tích ma trận doanh thu hàng hóa
     const startRowTopProd = 11;
     summarySheet.getCell(`A${startRowTopProd}`).value = 'MA TRẬN HIỆU SUẤT KINH DOANH (ĐÃ TÍCH HỢP GIÁ TRỊ MẶT HÀNG)';
     summarySheet.getCell(`A${startRowTopProd}`).font = { bold: true, size: 11, color: { argb: 'FF3B82F6' } };
@@ -228,13 +249,12 @@ export const exportReports = async (req, res) => {
       const currRow = summarySheet.getRow(startRowTopProd + 2 + idx);
       const monthlyVelocity = parseFloat((prod.totalQty / monthsDivider).toFixed(1));
       
-      // THUẬT TOÁN ĐÁNH GIÁ THÔNG MINH: Kết hợp giữa Giá trị đơn sản phẩm và Tốc độ bán
       let performanceStatus = '';
-      if (prod.price >= 5000000) { // Sản phẩm giá trị cao (Hi-end)
+      if (prod.price >= 5000000) { 
         if (monthlyVelocity >= 3) performanceStatus = '⭐ Siêu phẩm Hi-End (Doanh thu đột phá - Ưu tiên duy trì)';
         else if (monthlyVelocity >= 1) performanceStatus = '📈 Hàng giá trị cao tiêu thụ ổn định';
         else performanceStatus = '⚠️ Hàng cao cấp kén khách - Lưu kho ít tránh đọng vốn';
-      } else { // Sản phẩm phổ thông hoặc phụ kiện (Low/Mid-end)
+      } else { 
         if (monthlyVelocity >= 25) performanceStatus = '🔥 Phụ kiện bán cực chạy (Tốc độ xoay vòng kho nhanh)';
         else if (monthlyVelocity >= 8) performanceStatus = '🛒 Sức mua đều đặn';
         else performanceStatus = '❌ Hiệu suất kém - Cần giải phóng tồn kho';
@@ -247,7 +267,64 @@ export const exportReports = async (req, res) => {
     summarySheet.columns = [{ width: 35 }, { width: 15 }, { width: 12 }, { width: 18 }, { width: 15 }, { width: 45 }];
 
     // ==========================================
-    // TAB 2 (MỚI): PHÂN TÍCH TIẾN TRÌNH THỜI GIAN VÀ MẬT ĐỘ MUA BÁN
+    // TAB NEW: PHÂN TÍCH LỢI NHUẬN TỪM MẶT HÀNG
+    // ==========================================
+    const profitSheet = workbook.addWorksheet('Phân Tích Lợi Nhuận');
+    profitSheet.mergeCells('A1:G1');
+    const profitTitleCell = profitSheet.getCell('A1');
+    profitTitleCell.value = `BÁO CÁO PHÂN TÍCH GIÁ NHẬP & BIÊN ĐỘ LỢI NHUẬN GỘP (${rangeText.toUpperCase()})`;
+    profitTitleCell.font = { name: 'Arial', size: 13, bold: true, color: { argb: 'FFFFFFFF' } };
+    profitTitleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F766E' } }; // Màu xanh Teal sang trọng
+    profitTitleCell.alignment = { horizontal: 'center', vertical: 'middle' };
+    profitSheet.getRow(1).height = 35;
+
+    // Hiển thị KPI tài chính tổng quát ở trên đầu Tab Lợi nhuận
+    profitSheet.getCell('A3').value = 'Tổng Doanh Thu Kỳ:';
+    profitSheet.getCell('B3').value = totalRevenue;
+    profitSheet.getCell('B3').numberFormat = '#,##0';
+    profitSheet.getCell('B3').font = { bold: true };
+
+    profitSheet.getCell('A4').value = 'Tổng Giá Vốn (Nhập):';
+    profitSheet.getCell('B4').value = totalCostAll;
+    profitSheet.getCell('B4').numberFormat = '#,##0';
+    profitSheet.getCell('B4').font = { bold: true, color: { argb: 'DC2626' } };
+
+    profitSheet.getCell('A5').value = 'Tổng Lợi Nhuận Gộp:';
+    profitSheet.getCell('B5').value = totalProfitAll;
+    profitSheet.getCell('B5').numberFormat = '#,##0';
+    profitSheet.getCell('B5').font = { bold: true, color: { argb: 'FF16A34A' } };
+
+    // Tạo bảng chi tiết
+    const profitHeaderRow = profitSheet.getRow(7);
+    profitHeaderRow.values = ['Tên Sản Phẩm', 'Giá Nhập (Vốn)', 'Giá Bán', 'Số Lượng Bán', 'Tổng Doanh Thu', 'Tổng Giá Vốn', 'Lợi Nhuận Gộp'];
+    profitHeaderRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    profitHeaderRow.eachCell(c => { c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F766E' } }; });
+
+    topProducts.forEach((prod, idx) => {
+      const currRow = profitSheet.getRow(8 + idx);
+      currRow.values = [
+        prod.name, 
+        prod.costPrice, 
+        prod.price, 
+        prod.totalQty, 
+        prod.totalRevenue, 
+        prod.totalCost, 
+        prod.totalProfit
+      ];
+      // Định dạng tiền tệ VND cho dễ nhìn
+      currRow.getCell(2).numberFormat = '#,##0';
+      currRow.getCell(3).numberFormat = '#,##0';
+      currRow.getCell(5).numberFormat = '#,##0';
+      currRow.getCell(6).numberFormat = '#,##0';
+      currRow.getCell(7).numberFormat = '#,##0';
+
+      // Đổi màu chữ cột Lợi Nhuận sang xanh lá để kích thích thị giác
+      currRow.getCell(7).font = { color: { argb: 'FF16A34A' }, bold: true };
+    });
+    profitSheet.columns = [{ width: 35 }, { width: 16 }, { width: 16 }, { width: 14 }, { width: 18 }, { width: 18 }, { width: 18 }];
+
+    // ==========================================
+    // TAB 2: PHÂN TÍCH TIẾN TRÌNH THỜI GIAN VÀ MẬT ĐỘ MUA BÁN
     // ==========================================
     const timelineSheet = workbook.addWorksheet('Dòng Thời Gian Mua Bán');
     
@@ -259,14 +336,11 @@ export const exportReports = async (req, res) => {
 
     let currentTimelineRow = 3;
 
-    // Duyệt qua từng mốc thời gian (Ngày hoặc Tháng) để tạo bảng con chi tiết
     Object.keys(timelineMap).sort().forEach((timeBlock) => {
-      // Dòng tiêu đề cho mốc thời gian đó
       timelineSheet.getCell(`A${currentTimelineRow}`).value = `MỐC THỜI GIAN: ${timeBlock}`;
       timelineSheet.getCell(`A${currentTimelineRow}`).font = { bold: true, color: { argb: 'FF1E3A8A' } };
       timelineSheet.mergeCells(`A${currentTimelineRow}:E${currentTimelineRow}`);
       
-      // Header của bảng con
       const subHeader = timelineSheet.getRow(currentTimelineRow + 1);
       subHeader.values = ['Mã Đơn Gốc', 'Tên Sản Phẩm Được Bán', 'Số Lượng', 'Doanh Thu', 'Thời Gian Xuất Đơn Chi Tiết'];
       subHeader.font = { bold: true, size: 10 };
@@ -275,7 +349,6 @@ export const exportReports = async (req, res) => {
       let totalQtyInBlock = 0;
       let totalRevInBlock = 0;
 
-      // Đổ dữ liệu các sản phẩm bán được trong ngày/tháng này
       timelineMap[timeBlock].forEach((item) => {
         currentTimelineRow += 1;
         const row = timelineSheet.getRow(currentTimelineRow + 1);
@@ -286,14 +359,12 @@ export const exportReports = async (req, res) => {
         totalRevInBlock += item.revenue;
       });
 
-      // Dòng tổng kết cho khối thời gian đó giúp dễ theo dõi sản lượng tổng trong ngày/tháng
       currentTimelineRow += 1;
       const totalRow = timelineSheet.getRow(currentTimelineRow + 1);
       totalRow.values = ['TỔNG CỘNG TRONG MỐC:', '', totalQtyInBlock, totalRevInBlock, ''];
       totalRow.font = { bold: true, italic: true };
       totalRow.getCell(4).numberFormat = '#,##0';
 
-      // Cách ra 2 dòng chuẩn bị cho mốc thời gian tiếp theo
       currentTimelineRow += 3;
     });
 
