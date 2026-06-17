@@ -151,7 +151,7 @@ export const releaseVoucher = async (code, userId) => {
 // ==========================================
 export const getAdminVouchers = async (req, res) => {
   try {
-    const { search, isActive, status } = req.query;
+    const { search, isActive, status, startDate, endDate } = req.query;
     const query = {};
 
     // 1. Tìm kiếm theo mã code (Không phân biệt hoa thường, tìm kiếm tương đối)
@@ -168,15 +168,24 @@ export const getAdminVouchers = async (req, res) => {
     const now = new Date();
     if (status === 'active') {
       // Mã đang còn thời hạn sử dụng và đang bật kích hoạt
-      query.startDate = { $lte: now };
-      query.endDate = { $gte: now };
+      query.startDate = { ...query.startDate, $lte: now };
+      query.endDate = { ...query.endDate, $gte: now };
       query.isActive = true;
     } else if (status === 'expired') {
       // Mã đã quá hạn sử dụng
-      query.endDate = { $lt: now };
+      query.endDate = { ...query.endDate, $lt: now }; // Lưu ý: viết liền $lt (xóa dấu gạch dưới nếu có, ở đây viết chuẩn là $lt)
     } else if (status === 'upcoming') {
       // Mã được lên lịch trước, chưa đến ngày áp dụng
-      query.startDate = { $gt: now };
+      query.startDate = { ...query.startDate, $gt: now };
+    }
+
+    // 4. BỔ SUNG: Lọc chính xác theo khoảng thời gian Admin chọn (Hỗ trợ chọn 1 trong 2 hoặc cả 2)
+    // Node.js sẽ tự động phân tách chuỗi chứa timezone +07:00 về mốc giờ chuẩn xác trong DB
+    if (startDate) {
+      query.startDate = { ...query.startDate, $gte: new Date(startDate) };
+    }
+    if (endDate) {
+      query.endDate = { ...query.endDate, $lte: new Date(endDate) };
     }
 
     // Tìm kiếm và sắp xếp theo ngày tạo mới nhất lên đầu

@@ -14,6 +14,10 @@ const AdminVouchers = () => {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState(undefined);
   const [isActiveFilter, setIsActiveFilter] = useState(undefined);
+  
+  // Bổ sung State lọc thời gian độc lập
+  const [filterStartDate, setFilterStartDate] = useState(null);
+  const [filterEndDate, setFilterEndDate] = useState(null);
 
   // Trạng thái cho Modal Form (Thêm/Sửa)
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -29,6 +33,14 @@ const AdminVouchers = () => {
       if (statusFilter) params.status = statusFilter;
       if (isActiveFilter) params.isActive = isActiveFilter;
 
+      // Xử lý giữ nguyên múi giờ Việt Nam (+07:00) khi gửi lên Server
+      if (filterStartDate) {
+        params.startDate = dayjs(filterStartDate).startOf('day').format('YYYY-MM-DDTHH:mm:ss.SSS') + '+07:00';
+      }
+      if (filterEndDate) {
+        params.endDate = dayjs(filterEndDate).endOf('day').format('YYYY-MM-DDTHH:mm:ss.SSS') + '+07:00';
+      }
+
       const response = await API.get('/api/vouchers', { params });
       if (response.data.success) {
         setVouchers(response.data.data);
@@ -42,7 +54,7 @@ const AdminVouchers = () => {
 
   useEffect(() => {
     fetchVouchers();
-  }, [statusFilter, isActiveFilter]); // Tự động refetch khi đổi bộ lọc nhanh
+  }, [statusFilter, isActiveFilter, filterStartDate, filterEndDate]); // Tự động gọi lại API khi thay đổi bộ lọc ngày tháng
 
   // 2. Xử lý Bật/Tắt nhanh trạng thái isActive bằng Switch trên Table
   const handleToggleActive = async (id, currentStatus) => {
@@ -201,21 +213,21 @@ const AdminVouchers = () => {
         
         {/* THANH ĐIỀU HƯỚNG TÌM KIẾM & BỘ LỌC */}
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
-          <Space size="middle">
+          <Space size="middle" style={{ flexWrap: 'wrap' }}>
             <Input
               placeholder="Tìm mã giảm giá..."
               prefix={<SearchOutlined />}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               onPressEnter={fetchVouchers}
-              style={{ width: 220 }}
+              style={{ width: 180 }}
             />
             <Button type="primary" onClick={fetchVouchers}>Tìm kiếm</Button>
 
             <Select
               placeholder="Tình trạng thời hạn"
               allowClear
-              style={{ width: 160 }}
+              style={{ width: 150 }}
               onChange={(val) => setStatusFilter(val)}
             >
               <Select.Option value="active">Đang hiệu lực</Select.Option>
@@ -226,12 +238,30 @@ const AdminVouchers = () => {
             <Select
               placeholder="Bộ lọc trạng thái"
               allowClear
-              style={{ width: 160 }}
+              style={{ width: 150 }}
               onChange={(val) => setIsActiveFilter(val)}
             >
               <Select.Option value="true">Bật kích hoạt</Select.Option>
               <Select.Option value="false">Tắt kích hoạt</Select.Option>
             </Select>
+
+            {/* BỔ SUNG: Ô CHỌN THỜI GIAN ĐỘC LẬP THEO GIỜ VIỆT NAM */}
+            <DatePicker 
+              placeholder="Từ ngày áp dụng" 
+              format="DD/MM/YYYY"
+              value={filterStartDate}
+              onChange={(date) => setFilterStartDate(date)}
+              style={{ width: 150 }}
+              allowClear
+            />
+            <DatePicker 
+              placeholder="Đến ngày áp dụng" 
+              format="DD/MM/YYYY"
+              value={filterEndDate}
+              onChange={(date) => setFilterEndDate(date)}
+              style={{ width: 150 }}
+              allowClear
+            />
           </Space>
 
           <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal(null)}>
