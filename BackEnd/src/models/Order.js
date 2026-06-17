@@ -25,6 +25,8 @@ const orderSchema = new mongoose.Schema({
     qrCodeUrl: { type: String },
     paymentUrl: { type: String },
     stockReserved: { type: Boolean, default: false },
+    voucherCode: { type: String, default: null },
+    discountAmount: { type: Number, default: 0 },
     createdAt: { type: Date, default: Date.now }
     });
 export default mongoose.model('Order', orderSchema);

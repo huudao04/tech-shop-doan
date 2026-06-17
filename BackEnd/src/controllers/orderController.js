@@ -9,6 +9,7 @@ import { removeVietnameseTones } from '../ultils/helpers.js';
 import { reserveOrderStock, releaseOrderStock, markOrderAsPaid } from '../services/orderStock.js';
 import { sendOrderConfirmationEmail } from '../services/emailService.js';
 import { getIo } from '../services/socket.js';
+import { reserveVoucher, releaseVoucher } from './voucherController.js';
 
 const emitNotification = (room, payload) => {
   const io = getIo();
@@ -33,7 +34,7 @@ const matchProvinceFromAddress = async (shippingAddress) => {
 
 export const createOrder = async (req, res) => {
   try {
-    const { customerName, phoneNumber, shippingAddress, paymentMethod, items, totalPrice } = req.body;
+    const { customerName, phoneNumber, shippingAddress, paymentMethod, items, totalPrice, voucherCode } = req.body;
     const userId = req.user.id;
     const provinceFilter = await matchProvinceFromAddress(shippingAddress);
 
@@ -55,12 +56,11 @@ export const createOrder = async (req, res) => {
       paymentMethod,
       items: items.map((i) => ({ productId: i.productId, name: i.name, price: i.price, quantity: i.quantity })),
       totalPrice,
+      voucherCode: voucherCode || null,
       status: 'Chờ xác nhận'
     });
 
-    if (paymentMethod !== 'BANK_TRANSFER') {
       await reserveOrderStock(newOrder);
-    }
 
     let paymentGateway = null;
     if (paymentMethod === 'BANK_TRANSFER') {
@@ -82,6 +82,9 @@ export const createOrder = async (req, res) => {
 
     await newOrder.save();
 
+    if (voucherCode) {
+      await reserveVoucher(voucherCode, userId);
+    }
     try {
       const user = await User.findById(userId).select('email');
       if (user && user.email) {
@@ -206,6 +209,11 @@ export const cancelCustomerOrder = async (req, res) => {
     }
 
     await releaseOrderStock(order);
+
+    if (order.voucherCode) {
+      await releaseVoucher(order.voucherCode, order.userId);
+    }
+
     order.status = 'Hủy đơn hàng';
     if (order.paymentStatus === 'Chờ thanh toán') order.paymentStatus = 'Thanh toán thất bại';
     await order.save();
@@ -282,7 +290,12 @@ export const updateAdminOrder = async (req, res) => {
       if (order.status === 'Đã nhận') {
         return res.status(400).json({ success: false, message: 'Đơn hàng đã hoàn thành, không thể hủy đè!' });
       }
+      
       await releaseOrderStock(order);
+      if (order.voucherCode) {
+        await releaseVoucher(order.voucherCode, order.userId);
+      }
+
       order.status = 'Hủy đơn hàng';
       order.paymentStatus = 'Thanh toán thất bại';
     } else {

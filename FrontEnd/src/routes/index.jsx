@@ -8,6 +8,7 @@ import AdminOrders from '../pages/AdminOrders';
 import AdminReports from '../pages/AdminReports';
 import AdminReviews from '../pages/AdminReviews';
 import AdminUsers from '../pages/AdminUsers';
+import AdminVouchers from '../pages/AdminVouchers';
 import Home from '../pages/Home';
 import ProductDetail from '../pages/ProductDetail';
 import Cart from '../pages/Cart';
@@ -72,7 +73,8 @@ export const router = createBrowserRouter([
           { path: 'orders', element: <AdminOrders /> },
           { path: 'reports', element: <AdminReports /> },
           { path: 'reviews', element: <AdminReviews /> },
-          { path: 'users', element: <AdminUsers /> }
+          { path: 'users', element: <AdminUsers /> },
+          { path: 'vouchers', element: <AdminVouchers /> }
         ],
       }
     ],

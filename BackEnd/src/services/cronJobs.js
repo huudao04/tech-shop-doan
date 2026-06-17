@@ -3,6 +3,7 @@ import Order from '../models/Order.js';
 import Notification from '../models/Notification.js';
 import ChatHistory from '../models/ChatHistory.js';
 import { releaseOrderStock } from './orderStock.js';
+import { releaseVoucher } from '../controllers/voucherController.js';
 
 export default function initCron(io) {
   cron.schedule('*/5 * * * *', async () => {
@@ -17,6 +18,9 @@ export default function initCron(io) {
 
       for (const order of expiredOrders) {
         await releaseOrderStock(order);
+        if (order.voucherCode) {
+          await releaseVoucher(order.voucherCode, order.userId);
+        }
         order.paymentStatus = 'Thanh toán thất bại';
         order.status = 'Hủy đơn hàng';
         await order.save();

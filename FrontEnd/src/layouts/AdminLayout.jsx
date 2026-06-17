@@ -9,7 +9,8 @@ import {
   CommentOutlined, 
   LogoutOutlined, 
   HomeOutlined, 
-  UserOutlined 
+  UserOutlined,
+  TagOutlined
 } from '@ant-design/icons';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { io } from 'socket.io-client'; 
@@ -119,6 +120,7 @@ const AdminLayout = () => {
     if (path.startsWith('/admin/users')) return ['8'];
     if (path.startsWith('/admin/reports')) return ['4'];
     if (path.startsWith('/admin/reviews')) return ['5'];
+    if (path.startsWith('/admin/vouchers')) return ['9'];
     return ['1']; 
   };
 
@@ -142,6 +144,7 @@ const AdminLayout = () => {
           <Menu.Item key="8" icon={<UserOutlined />}><Link to="/admin/users">Người dùng</Link></Menu.Item>
           <Menu.Item key="4" icon={<PieChartOutlined />}><Link to="/admin/reports">Báo cáo</Link></Menu.Item>
           <Menu.Item key="5" icon={<CommentOutlined />}><Link to="/admin/reviews">Đánh giá</Link></Menu.Item>
+          <Menu.Item key="9" icon={<TagOutlined />}><Link to="/admin/vouchers">Mã giảm giá</Link></Menu.Item>
 
           <Menu.Item key="7" icon={<LogoutOutlined />} onClick={handleLogout} danger>Đăng xuất</Menu.Item>
         </Menu>
