@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Col, Row, Statistic, Button, Spin, message, Typography, Dropdown } from 'antd';
+import { Card, Col, Row, Statistic, Button, Spin, message, Typography, Dropdown, DatePicker, Space } from 'antd';
 import { 
   BarChart, 
   Bar, 
@@ -16,17 +16,20 @@ import {
   DownloadOutlined, 
   DollarCircleOutlined, 
   LineChartOutlined,
-  ShoppingOutlined
+  ShoppingOutlined,
+  CalendarOutlined
 } from '@ant-design/icons';
 import API from '../utils/axiosClient';
 import 'antd/dist/reset.css';
 
 const { Title } = Typography;
+const { RangePicker } = DatePicker;
 
 const AdminReports = () => {
   const [loading, setLoading] = useState(true);
   const [exportLoading, setExportLoading] = useState(false);
   const [chartData, setChartData] = useState([]);
+  const [dates, setDates] = useState(null); // Lưu trữ khoảng ngày tùy chọn dạng [moment, moment]
   const [summary, setSummary] = useState({
     totalRevenue: 0,
     totalOrdersCount: 0
@@ -34,24 +37,18 @@ const AdminReports = () => {
 
   const fetchReportData = async () => {
     try {
-    setExportLoading(true);
       setLoading(true);
       const res = await API.get('/api/admin/reports-chart');
-      // API mới trả về cấu trúc đối tượng { months, totalRevenue, totalOrdersCount }
       if (res.data && res.data.months) {
         setChartData(res.data.months);
         setSummary({
           totalRevenue: res.data.totalRevenue || 0,
           totalOrdersCount: res.data.totalOrdersCount || 0
         });
-        setExportLoading(false);
       } else {
-        // Fallback phòng trường hợp mảng cũ
         setChartData(Array.isArray(res.data) ? res.data : []);
-        setExportLoading(false);
       }
     } catch (error) {
-      setExportLoading(false);
       console.error(error);
       message.error('Không thể tải dữ liệu báo cáo thống kê');
     } finally {
@@ -63,23 +60,37 @@ const AdminReports = () => {
     fetchReportData();
   }, []);
 
-  const handleExportExcel = async (timeRange) => {
+  // Xử lý chung cho cả xuất theo mốc cố định và mốc tùy chọn
+  const handleExportExcel = async (timeRange, customDates = null) => {
     try {
       setExportLoading(true);
       
-      let rangeLabel = '1 Tháng';
-      if (timeRange === '6months') rangeLabel = '6 Tháng';
-      if (timeRange === '1year') rangeLabel = '1 Năm';
+      let apiUrl = `/api/admin/export-reports`;
+      let rangeLabel = '';
+      let downloadName = '';
+
+      if (customDates && customDates[0] && customDates[1]) {
+        const startStr = customDates[0].format('YYYY-MM-DD');
+        const endStr = customDates[1].format('YYYY-MM-DD');
+        apiUrl += `?startDateStr=${startStr}&endDateStr=${endStr}`;
+        rangeLabel = `từ ${customDates[0].format('DD/MM/YYYY')} đến ${customDates[1].format('DD/MM/YYYY')}`;
+        downloadName = `Bao_Cao_Tuy_Chon_TechShop_${startStr}_to_${endStr}_${Date.now()}.xlsx`;
+      } else {
+        apiUrl += `?range=${timeRange}`;
+        if (timeRange === '1month') rangeLabel = '1 Tháng';
+        if (timeRange === '6months') rangeLabel = '6 Tháng';
+        if (timeRange === '1year') rangeLabel = '1 Năm';
+        downloadName = `Bao_Cao_Tong_Hop_TechShop_${timeRange}_${Date.now()}.xlsx`;
+      }
 
       message.loading({ content: `Đang khởi tạo báo cáo phân tích chiến lược ${rangeLabel}...`, key: 'export' });
       
-      // Gửi kèm query param ?range=... lên server
-      const response = await API.get(`/api/admin/export-reports?range=${timeRange}`, { responseType: 'blob' });
+      const response = await API.get(apiUrl, { responseType: 'blob' });
       
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', `Bao_Cao_Tong_Hop_TechShop_${timeRange}_${Date.now()}.xlsx`);
+      link.setAttribute('download', downloadName);
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -93,7 +104,6 @@ const AdminReports = () => {
     }
   };
 
-  // Cấu hình các item hiển thị trong Dropdown menu của Antd
   const exportMenuItems = [
     {
       key: '1month',
@@ -124,7 +134,7 @@ const AdminReports = () => {
     <div style={{ padding: '24px', backgroundColor: '#f8fafc', minHeight: '100vh', fontFamily: 'sans-serif' }}>
       
       {/* Header báo cáo */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '28px', borderBottom: '1px solid #e2e8f0', paddingBottom: '16px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '28px', borderBottom: '1px solid #e2e8f0', paddingBottom: '16px', flexWrap: 'wrap', gap: '16px' }}>
         <div>
           <Title level={2} style={{ margin: 0, color: '#1e293b', fontWeight: 700 }}>
             Báo cáo & Thống kê Doanh thu
@@ -134,21 +144,47 @@ const AdminReports = () => {
           </p>
         </div>
         
-        {/* Nâng cấp từ Button đơn lẻ thành Dropdown Menu tuyển chọn thời gian */}
-        <Dropdown menu={{ items: exportMenuItems }} placement="bottomRight" arrow>
-          <Button 
-            type="primary" 
-            icon={<DownloadOutlined />} 
-            size="large"
-            loading={exportLoading}
-            style={{ backgroundColor: '#10b981', borderColor: '#10b981', fontWeight: 600, borderRadius: '6px' }}
-          >
-            Xuất file Excel báo cáo ▼
-          </Button>
-        </Dropdown>
+        {/* Khu vực Export linh hoạt */}
+        <Space size="middle" wrap>
+          {/* Bộ chọn khoảng thời gian tùy ý */}
+          <Space style={{ backgroundColor: '#ffffff', padding: '4px 8px', borderRadius: '6px', border: '1px solid #d9d9d9' }}>
+            <span style={{ color: '#64748b', fontSize: '14px', fontWeight: 500 }}>Chọn khoảng ngày:</span>
+            <RangePicker 
+              value={dates} 
+              onChange={(values) => setDates(values)} 
+              format="DD/MM/YYYY"
+              placeholder={['Từ ngày', 'Đến ngày']}
+              style={{ border: 'none', boxShadow: 'none' }}
+            />
+            <Button
+              type="primary"
+              ghost
+              icon={<CalendarOutlined />}
+              disabled={!dates || !dates[0] || !dates[1]}
+              loading={exportLoading}
+              onClick={() => handleExportExcel(null, dates)}
+              style={{ borderRadius: '4px', borderColor: '#10b981', color: '#10b981' }}
+            >
+              Xuất mốc đã chọn
+            </Button>
+          </Space>
+
+          {/* Dropdown Menu tuyển chọn thời gian mặc định */}
+          <Dropdown menu={{ items: exportMenuItems }} placement="bottomRight" arrow>
+            <Button 
+              type="primary" 
+              icon={<DownloadOutlined />} 
+              size="large"
+              loading={exportLoading}
+              style={{ backgroundColor: '#1e293b', borderColor: '#1e293b', fontWeight: 600, borderRadius: '6px' }}
+            >
+              Mốc cố định ▼
+            </Button>
+          </Dropdown>
+        </Space>
       </div>
 
-      {/* Thẻ số liệu tổng hợp đầu trang Report */}
+      {/* Thẻ số liệu tổng hợp đầu trang */}
       <Row gutter={[16, 16]} style={{ marginBottom: '28px' }}>
         <Col xs={24} md={12}>
           <Card style={{ borderLeft: '5px solid #10b981', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
@@ -176,8 +212,6 @@ const AdminReports = () => {
 
       {/* Đồ thị trực quan */}
       <Row gutter={[16, 16]}>
-        
-        {/* Biểu đồ doanh thu */}
         <Col xs={24} xl={12}>
           <Card 
             title={<span style={{ fontWeight: 600, color: '#1e293b' }}><LineChartOutlined style={{ color: '#10b981', marginRight: '8px' }} /> Biểu đồ xu hướng doanh thu hàng tháng</span>}
@@ -198,7 +232,6 @@ const AdminReports = () => {
           </Card>
         </Col>
 
-        {/* Biểu đồ lượng đơn hàng */}
         <Col xs={24} xl={12}>
           <Card 
             title={<span style={{ fontWeight: 600, color: '#1e293b' }}><ShoppingOutlined style={{ color: '#3b82f6', marginRight: '8px' }} /> Biểu đồ sản lượng đơn hàng thành công</span>}
@@ -218,7 +251,6 @@ const AdminReports = () => {
             </div>
           </Card>
         </Col>
-
       </Row>
 
     </div>

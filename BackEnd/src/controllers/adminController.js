@@ -93,35 +93,64 @@ export const getReportsChart = async (req, res) => {
 
 export const exportReports = async (req, res) => {
   try {
-    const { range } = req.query;
+    const { range, startDateStr, endDateStr } = req.query;
     
     let startDate = new Date();
     let monthsDivider = 1;
     let rangeText = '1 Tháng Gần Nhất';
     let timeGroupType = 'day'; 
 
-    if (range === '6months') {
-      startDate.setMonth(startDate.getMonth() - 6);
-      monthsDivider = 6;
-      rangeText = '6 Tháng Gần Nhất';
-      timeGroupType = 'month';
-    } else if (range === '1year') {
-      startDate.setFullYear(startDate.getFullYear() - 1);
-      monthsDivider = 12;
-      rangeText = '1 Năm Gần Nhất';
-      timeGroupType = 'month';
+    if (startDateStr && endDateStr) {
+      // Thêm giờ local vào chuỗi để ép JavaScript khởi tạo đúng ngày theo múi giờ máy chủ (+7)
+      startDate = new Date(`${startDateStr}T00:00:00`);
+      
+      // Ngày kết thúc bọc đến hết ngày (23:59:59) theo giờ local (+7)
+      const endDate = new Date(`${endDateStr}T23:59:59.999`);
+
+      rangeText = `Từ ${startDate.toLocaleDateString('vi-VN')} Đến ${endDate.toLocaleDateString('vi-VN')}`;
+      
+      // Tính toán khoảng cách số tháng để làm công thức chia trung bình tốc độ bán hàng
+      const diffTime = Math.abs(endDate - startDate);
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      monthsDivider = diffDays / 30 > 0 ? parseFloat((diffDays / 30).toFixed(1)) : 1;
+      
+      // Nếu khoảng thời gian chọn > 60 ngày thì gom nhóm theo Tháng, ngược lại gom theo Ngày
+      timeGroupType = diffDays > 60 ? 'month' : 'day';
+
     } else {
-      startDate.setMonth(startDate.getMonth() - 1);
-      monthsDivider = 1;
-      rangeText = '1 Tháng Gần Nhất';
-      timeGroupType = 'day';
+      // FALLBACK VỀ CÁC MỐC CỐ ĐỊNH NẾU KHÔNG CHỌN KHOẢNG NGÀY TÙY CHỈNH
+      if (range === '6months') {
+        startDate.setMonth(startDate.getMonth() - 6);
+        monthsDivider = 6;
+        rangeText = '6 Tháng Gần Nhất';
+        timeGroupType = 'month';
+      } else if (range === '1year') {
+        startDate.setFullYear(startDate.getFullYear() - 1);
+        monthsDivider = 12;
+        rangeText = '1 Năm Gần Nhất';
+        timeGroupType = 'month';
+      } else {
+        startDate.setMonth(startDate.getMonth() - 1);
+        monthsDivider = 1;
+        rangeText = '1 Tháng Gần Nhất';
+        timeGroupType = 'day';
+      }
     }
 
-    const validOrders = await Order.find({
-      createdAt: { $gte: startDate },
-      $or: [{ paymentStatus: 'Đã thanh toán' }, { status: 'Đã nhận' }]
-    }).sort({ createdAt: 1 });
+    // CẬP NHẬT LẠI CÂU QUERY MONGODB ĐẢM BẢO CHÍNH XÁC:
+    const queryCondition = {
+      createdAt: { $gte: startDate }
+    };
 
+    // Nếu là mốc tùy chọn, giới hạn chính xác nhỏ hơn hoặc bằng endDate local đã tính ở trên
+    if (startDateStr && endDateStr) {
+      queryCondition.createdAt.$lte = new Date(`${endDateStr}T23:59:59.999`);
+    } else {
+      // Nếu là mốc cố định (1 tháng, 6 tháng...), giới hạn đến thời điểm hiện tại
+      queryCondition.createdAt.$lte = new Date();
+    }
+
+    const validOrders = await Order.find(queryCondition).sort({ createdAt: 1 });
     const totalProducts = await Product.countDocuments();
     const totalOrdersInPeriod = validOrders.length;
     const totalRevenue = validOrders.reduce((sum, o) => sum + (o.totalPrice || 0), 0);
@@ -402,8 +431,9 @@ export const exportReports = async (req, res) => {
       row.getCell('totalPrice').numberFormat = '#,##0';
     });
 
+    const fileLabel = startDateStr && endDateStr ? `Custom_${startDateStr}_to_${endDateStr}` : range;
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename=Bao_Cao_Chien_Luoc_TechShop_${range}_${Date.now()}.xlsx`);
+    res.setHeader('Content-Disposition', `attachment; filename=Bao_Cao_Chien_Luoc_TechShop_${fileLabel}_${Date.now()}.xlsx`);
     await workbook.xlsx.write(res);
     res.end();
 
