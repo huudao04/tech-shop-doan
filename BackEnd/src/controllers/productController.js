@@ -5,7 +5,7 @@ import Category from '../models/Category.js';
 import Brand from '../models/Brand.js';
 import Review from '../models/Review.js';
 import cloudinary from '../config/cloudinary.js';
-import { makeVietnameseRegex } from '../ultils/helpers.js';
+import { makeVietnameseRegex, calculateAutoPrice } from '../ultils/helpers.js';
 
 export const getProducts = async (req, res) => {
   try {
@@ -104,10 +104,26 @@ export const uploadImages = async (req, res) => {
 
 export const createProduct = async (req, res) => {
   try {
-    const { name, price, description, category, brand, stock, image } = req.body;
+    const { name,  costPrice, price, pricingMethod, description, category, brand, stock, image } = req.body;
     const fileNames = Array.isArray(image) ? image : image ? [image] : (req.files ? req.files.map(f => f.path) : []);
 
-    const newProduct = new Product({ name, price: Number(price), description, category, brand, stock: Number(stock || 0), image: fileNames });
+    let finalPrice = Number(price);
+    const autoCalculatedPrice = calculateAutoPrice(costPrice, pricingMethod);
+    if (autoCalculatedPrice !== null) {
+      finalPrice = autoCalculatedPrice;
+    }
+
+    const newProduct = new Product({ 
+      name, 
+      price: finalPrice,
+      costPrice: Number(costPrice || 0), 
+      pricingMethod: pricingMethod || 'manual',
+      description, 
+      category, 
+      brand, 
+      stock: Number(stock || 0), 
+      image: fileNames 
+    });
     await newProduct.save();
     return res.status(201).json({ success: true, message: 'Thêm sản phẩm thành công!', product: newProduct });
   } catch (error) {
@@ -132,7 +148,14 @@ const extractPublicIdFromCloudinaryUrl = (imageUrl) => {
 
 export const updateProduct = async (req, res) => {
   try {
-    const { name, price, description, category, brand, stock, image } = req.body;
+    const { name, costPrice, price, pricingMethod, description, category, brand, stock, image } = req.body;
+
+    let finalPrice = Number(price);
+    const autoCalculatedPrice = calculateAutoPrice(costPrice, pricingMethod || 'manual');
+    if (autoCalculatedPrice !== null) {
+      finalPrice = autoCalculatedPrice;
+    }
+    
     const product = await Product.findById(req.params.id);
     if (!product) return res.status(404).json({ success: false, message: 'Không tìm thấy sản phẩm' });
 
@@ -158,7 +181,9 @@ export const updateProduct = async (req, res) => {
     }
 
     product.name = name;
-    product.price = Number(price);
+    product.costPrice = Number(costPrice);
+    product.price = finalPrice;
+    product.pricingMethod = pricingMethod || 'manual';
     product.description = description;
     product.category = category;
     product.brand = brand;
@@ -198,6 +223,7 @@ export const deleteProduct = async (req, res) => {
     return res.status(500).json({ success: false, message: 'Không thể xóa sản phẩm' });
   }
 };
+
 export const importProductsExcel = async (req, res) => {
   try {
     if (!req.file) {
@@ -208,8 +234,8 @@ export const importProductsExcel = async (req, res) => {
     const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
     const sheetName = workbook.SheetNames[0];
     const worksheet = workbook.Sheets[sheetName];
-    
-    // Chuyển thành JSON mảng để kiểm tra dữ liệu
+
+    // Chuyển thành JSON mảng để kiểm tra dữ liệu, bắt đầu từ dòng 3 (range: 3)
     const data = XLSX.utils.sheet_to_json(worksheet, { 
       range: 3
     });
@@ -226,7 +252,8 @@ export const importProductsExcel = async (req, res) => {
     for (let i = 0; i < data.length; i++) {
       const row = data[i];
       const name = row["Tên sản phẩm (*)"];
-      const price = row["Giá (*)"];
+      const costPrice = row["Giá nhập (*)"];
+      const price = row["Giá bán"]; // 🌟 Đổi tên cột từ "Giá bán (*)" sang "Giá bán" (Không bắt buộc)
       const category = row["Danh mục (*)"];
       const brand = row["Thương hiệu (*)"];
       const stock = row["Số lượng (*)"];
@@ -237,7 +264,17 @@ export const importProductsExcel = async (req, res) => {
       let rowErrors = [];
 
       if (!name) rowErrors.push("Thiếu tên sản phẩm");
-      if (!price || isNaN(Number(price)) || Number(price) <= 0) rowErrors.push("Giá phải là số và lớn hơn 0");
+      if (!costPrice || isNaN(Number(costPrice)) || Number(costPrice) <= 0) {
+        rowErrors.push("Giá nhập phải là số và lớn hơn 0");
+      }
+      
+      // Kiểm tra định dạng giá bán NẾU người dùng có nhập
+      if (price !== undefined && price !== null && price !== "") {
+        if (isNaN(Number(price)) || Number(price) <= 0) {
+          rowErrors.push("Giá bán nếu nhập phải là số và lớn hơn 0");
+        }
+      }
+
       if (!category) rowErrors.push("Thiếu danh mục");
       if (!brand) rowErrors.push("Thiếu thương hiệu");
       if (stock !== undefined && (isNaN(Number(stock)) || Number(stock) < 0)) rowErrors.push("Số lượng phải là số không âm");
@@ -245,13 +282,28 @@ export const importProductsExcel = async (req, res) => {
       // Nếu dòng này có lỗi
       if (rowErrors.length > 0) {
         hasError = true;
-        // Sao chép lại dòng cũ và đính thêm cột "LÝ DO LỖI" ở cuối
         errorRows.push({
           ...row,
           "LÝ DO LỖI (VUI LÒNG SỬA)": rowErrors.join(" | ")
         });
       } else {
-        // Nếu dòng này hợp lệ, đẩy vào danh sách chờ tạo dữ liệu nháp
+        // 🌟 LOGIC XỬ LÝ GIÁ TỰ ĐỘNG THEO YÊU CẦU:
+        let finalPrice = 0;
+        let finalPricingMethod = 'manual';
+
+        // Nếu người dùng KHÔNG nhập giá bán (hoặc để chuỗi rỗng)
+        if (price === undefined || price === null || String(price).trim() === "") {
+          finalPricingMethod = 'auto_15'; // Đặt chế độ tự động 15%
+          // Tính toán giá bán tự động: Giá nhập + 15%
+          const autoCalculatedPrice = calculateAutoPrice(costPrice, 'auto_15');
+          finalPrice = autoCalculatedPrice !== null ? autoCalculatedPrice : Number(costPrice) * 1.15;
+        } else {
+          // Nếu người dùng CÓ nhập giá bán cụ thể
+          finalPricingMethod = 'manual';
+          finalPrice = Number(price);
+        }
+
+        // Bóc tách danh sách file ảnh chờ đồng bộ
         let imagePlaceholders = [];
         if (imageNamesString) {
           imagePlaceholders = String(imageNamesString)
@@ -262,7 +314,9 @@ export const importProductsExcel = async (req, res) => {
 
         draftProducts.push({
           name: String(name).trim(),
-          price: Number(price),
+          costPrice: Number(costPrice),
+          price: finalPrice, // Sử dụng giá đã qua xử lý logic
+          pricingMethod: finalPricingMethod, // Lưu phương thức 'manual' hoặc 'auto_15'
           category: String(category).trim(),
           brand: String(brand).trim(),
           stock: Number(stock || 0),
@@ -274,25 +328,21 @@ export const importProductsExcel = async (req, res) => {
       }
     }
 
-    // 3. Xử lý phản hồi dựa trên kết quả kiểm tra lỗi
+    // 3. Xử lý phản hồi nếu có dòng dữ liệu lỗi
     if (hasError) {
-      // Nếu có bất kỳ dòng nào lỗi, xuất ngược lại toàn bộ danh sách lỗi thành file Excel mới
       const errorWorksheet = XLSX.utils.json_to_sheet(errorRows);
       const errorWorkbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(errorWorkbook, errorWorksheet, "Danh_Sach_Loi");
 
-      // Ghi workbook vào bộ nhớ tạm buffer dạng nhị phân
       const errorBuffer = XLSX.write(errorWorkbook, { type: 'buffer', bookType: 'xlsx' });
 
-      // Cấu hình Header trả về dạng file tải về (Attachment)
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       res.setHeader('Content-Disposition', 'attachment; filename=File_Loi_Import_San_Pham.xlsx');
       
-      // Gửi trả file Excel lỗi về cho Frontend
       return res.status(422).send(errorBuffer);
     }
 
-    // 4. Nếu toàn bộ file Excel hoàn hảo không lỗi, tiến hành lưu DB
+    // 4. Nếu toàn bộ dữ liệu hợp lệ, thực hiện lưu vào Database
     if (draftProducts.length > 0) {
       const savedProducts = await Product.insertMany(draftProducts);
       return res.json({ 

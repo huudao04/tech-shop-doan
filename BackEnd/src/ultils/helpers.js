@@ -1,3 +1,19 @@
+export const calculateAutoPrice = (costPrice, pricingMethod) => {
+  const cost = Number(costPrice || 0);
+  
+  // Nếu là manual hoặc không có phương thức hợp lệ, giữ nguyên không tính tự động
+  if (!pricingMethod || pricingMethod === 'manual') return null;
+
+  // Bóc tách số phần trăm từ chuỗi (VD: 'auto_15' -> 15)
+  const percentStr = pricingMethod.split('_')[1];
+  const percent = parseInt(percentStr, 10);
+
+  if (isNaN(percent)) return null;
+
+  // Công thức: Giá bán = Giá nhập + (Giá nhập * % / 100)
+  return cost + (cost * percent / 100);
+};
+
 export const notImplemented = (res, message = 'Chức năng chưa được triển khai.') => {
   return res.status(501).json({ success: false, message });
 };

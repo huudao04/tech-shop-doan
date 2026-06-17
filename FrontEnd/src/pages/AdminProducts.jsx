@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
-import { Table, Button, Typography, Modal, Form, Input, InputNumber, Select, message, Space, Upload, Popconfirm, Card } from 'antd';
+import { Table, Button, Typography, Modal, Form, Input, InputNumber, Select, message, Space, Upload, Popconfirm, Card, Tag } from 'antd';
 import { PlusOutlined, DeleteOutlined, EditOutlined, SearchOutlined, DownloadOutlined, UploadOutlined, MenuOutlined } from '@ant-design/icons';
 import API from '../utils/axiosClient';
 import { getImageUrl } from '../utils/imageUrl.js';
@@ -19,6 +19,8 @@ const AdminProducts = () => {
   const [importing, setImporting] = useState(false);
   const [deletingProductId, setDeletingProductId] = useState(null);
   const [form] = Form.useForm();
+  const watchPricingMethod = Form.useWatch('pricingMethod', form);
+  const watchCostPrice = Form.useWatch('costPrice', form);
   const [isImageModalOpen, setIsImageModalOpen] = useState(false);
   const [importedProducts, setImportedProducts] = useState([]);
   const [bulkImagesFileList, setBulkImagesFileList] = useState([]);
@@ -311,7 +313,7 @@ const rowSelection = {
   const columns = [
     { 
       title: 'Tên sản phẩm',
-      width: 300,
+      width: 250,
       render: (_, record) => {
         const mainImage = Array.isArray(record.image) ? record.image[0] : record.image;
         return (
@@ -326,31 +328,42 @@ const rowSelection = {
         );
       }
     },
+    { title: 'Giá nhập', dataIndex: 'costPrice', key: 'costPrice', render: (val) => <span style={{color: '#cf1322'}}>{val?.toLocaleString()}đ</span> },
+    { 
+      title: 'Giá bán', 
+      key: 'price', 
+      render: (_, record) => (
+        <Space direction="vertical" size={0}>
+          <span style={{ fontWeight: 'bold', color: '#389e0d' }}>{record.price?.toLocaleString()}đ</span>
+          <Tag color={record.pricingMethod === 'manual' ? 'blue' : 'green'} style={{ fontSize: '10px' }}>
+            {record.pricingMethod === 'manual' ? 'Thủ công' : `Tự động +${record.pricingMethod?.split('_')[1]}%`}
+          </Tag>
+        </Space>
+      )
+    },
     { title: 'Thương hiệu', dataIndex: 'brand', key: 'brand' },
-    { title: 'Giá (VNĐ)', dataIndex: 'price', key: 'price', render: (val) => val?.toLocaleString() },
-    { title: 'Mô tả', dataIndex: 'description', key: 'description' },
     { title: 'Danh mục', dataIndex: 'category', key: 'category' },
-    { title: 'Số lượng', dataIndex: 'stock', key: 'stock' },
+    { title: 'Kho', dataIndex: 'stock', key: 'stock', render: (val) => <Tag color={val > 0 ? 'blue' : 'red'}>{val}</Tag> },
     { 
       title: 'Hành động', 
       key: 'action', 
       render: (_, record) => (
         <Space size="middle">
           <Button type="primary" ghost icon={<EditOutlined />} onClick={() => handleEditClick(record)}>Sửa</Button>
-          <Popconfirm
-            title="Xóa sản phẩm"
-            description={`Bạn có chắc chắn muốn xóa sản phẩm "${record.name}" không?`}
-            onConfirm={() => handleDelete(record._id)}
-            okText="Xóa"
-            cancelText="Hủy"
-            okButtonProps={{ danger: true, loading: deletingProductId === record._id }}
-          >
+          <Popconfirm title="Xóa sản phẩm?" onConfirm={() => handleDelete(record._id)}>
             <Button danger icon={<DeleteOutlined />}>Xóa</Button>
           </Popconfirm>
         </Space>
       ) 
     },
   ];
+
+  // Hàm tính nháp giá bán để hiển thị cho Admin xem trước
+  const getPreviewPrice = () => {
+    if (!watchCostPrice || !watchPricingMethod || watchPricingMethod === 'manual') return null;
+    const percent = parseInt(watchPricingMethod.split('_')[1]);
+    return watchCostPrice + (watchCostPrice * percent / 100);
+  };
 
   return (
     <div style={{ padding: '24px' }}>
@@ -504,40 +517,76 @@ const rowSelection = {
       />
 
       <Modal 
-        title={editingProduct ? "Chỉnh sửa thông tin sản phẩm" : "Thêm sản phẩm mới"} 
+        title={editingProduct ? "Chỉnh sửa sản phẩm" : "Thêm sản phẩm mới"} 
         open={isModalOpen} 
         onCancel={() => setIsModalOpen(false)} 
         onOk={() => form.submit()}
         confirmLoading={saving}
-        destroyOnClose
+        width={700}
       >
-        <Form form={form} layout="vertical" onFinish={onFinish}>
-          <Form.Item label="Tên sản phẩm" name="name" rules={[{ required: true, message: 'Vui lòng nhập tên sản phẩm!' }]}>
+        <Form form={form} layout="vertical" onFinish={onFinish} initialValues={{ pricingMethod: 'manual' }}>
+          <Form.Item label="Tên sản phẩm" name="name" rules={[{ required: true }]}>
             <Input />
           </Form.Item>
-          <Form.Item label="Giá" name="price" rules={[{ required: true, message: 'Vui lòng nhập giá tiền!' }]}>
-            <InputNumber style={{ width: '100%' }} formatter={value => `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')} parser={value => value.replace(/\$\s?|(,*)/g, '')} addonAfter="VNĐ"/>
-          </Form.Item>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+            <Form.Item label="Giá nhập (Gốc)" name="costPrice" rules={[{ required: true }]}>
+              <InputNumber 
+                style={{ width: '100%' }} 
+                formatter={v => `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')} 
+                addonAfter="VNĐ"
+              />
+            </Form.Item>
 
-          <Form.Item label="Thương hiệu" name="brand" rules={[{ required: true, message: 'Vui lòng chọn thương hiệu!' }]}>
-            <Select placeholder="Chọn thương hiệu">
-              {brands.map(b => (
-                <Select.Option key={b._id} value={b.name}>{b.name}</Select.Option>
-              ))}
-            </Select>
-          </Form.Item>
+            <Form.Item label="Phương thức đặt giá" name="pricingMethod">
+              <Select>
+                <Select.Option value="manual">Thủ công (Nhập giá bán)</Select.Option>
+                <Select.Option value="auto_5">Tự động +5%</Select.Option>
+                <Select.Option value="auto_10">Tự động +10%</Select.Option>
+                <Select.Option value="auto_15">Tự động +15%</Select.Option>
+                <Select.Option value="auto_20">Tự động +20%</Select.Option>
+                <Select.Option value="auto_30">Tự động +30%</Select.Option>
+              </Select>
+            </Form.Item>
+          </div>
 
-          <Form.Item label="Số lượng trong kho" name="stock">
-            <InputNumber 
-              style={{ width: '100%' }} min={0} />
-          </Form.Item>
+          {/* Logic ẩn hiện trường Giá bán */}
+          {watchPricingMethod === 'manual' ? (
+            <Form.Item label="Giá bán (Niêm yết)" name="price" rules={[{ required: true, message: 'Cần nhập giá bán khi chọn thủ công' }]}>
+              <InputNumber 
+                style={{ width: '100%' }} 
+                formatter={v => `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')} 
+                addonAfter="VNĐ"
+              />
+            </Form.Item>
+          ) : (
+            <div style={{ marginBottom: '24px', padding: '12px', background: '#f6ffed', border: '1px solid #b7eb8f', borderRadius: '4px' }}>
+              <span style={{ color: '#52c41a' }}>🚀 Giá bán sẽ được hệ thống tự tính: </span>
+              <strong style={{ fontSize: '16px' }}>
+                {getPreviewPrice()?.toLocaleString()} VNĐ
+              </strong>
+              <div style={{ fontSize: '12px', color: '#8c8c8c' }}>(Giá nhập + {watchPricingMethod?.split('_')[1]}%)</div>
+            </div>
+          )}
 
-          <Form.Item label="Danh mục" name="category" rules={[{ required: true, message: 'Vui lòng chọn danh mục!' }]}>
-            <Select placeholder="Chọn danh mục">
-              {categories.map(c => (
-                <Select.Option key={c._id} value={c.name}>{c.name}</Select.Option>
-              ))}
-            </Select>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+            <Form.Item label="Thương hiệu" name="brand" rules={[{ required: true }]}>
+              <Select>
+                {brands.map(b => <Select.Option key={b._id} value={b.name}>{b.name}</Select.Option>)}
+              </Select>
+            </Form.Item>
+
+            <Form.Item label="Danh mục" name="category" rules={[{ required: true }]}>
+              <Select>
+                {categories.map(c => <Select.Option key={c._id} value={c.name}>{c.name}</Select.Option>)}
+              </Select>
+            </Form.Item>
+          </div>
+
+          <Form.Item 
+            label="Số lượng tồn kho" 
+            name="stock"
+            rules={[{ required: true, message: 'Vui lòng nhập số lượng tồn kho' }]}>
+            <InputNumber style={{ width: '100%' }} min={0} />
           </Form.Item>
 
           <Form.Item label="Hình ảnh sản phẩm (Kéo thả để sắp xếp vị trí hiển thị, ảnh đầu tiên sẽ làm ảnh đại diện)">
