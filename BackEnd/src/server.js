@@ -20,6 +20,7 @@ import adminRoutes from './routes/adminRoutes.js';
 import notificationRoutes from './routes/notificationRoutes.js';
 import voucherRoutes from './routes/vouchersRoutes.js';
 import webhookRoutes from './routes/webhookRoutes.js';
+import shippingRoutes from './routes/shippingRoutes.js';
 import { sepayWebhookAlt } from './controllers/webhookController.js';
 import initCron from './services/cronJobs.js';
 import { initSocket } from './services/socket.js';
@@ -47,7 +48,7 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api', webhookRoutes);
 app.post('/webhook/sepay', sepayWebhookAlt);
-
+app.use('/api/shipping', shippingRoutes);
 app.get('/api/health', (req, res) => {
   res.json({ success: true, message: 'TechShop backend đang chạy.' });
 });

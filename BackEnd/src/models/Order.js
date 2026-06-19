@@ -27,6 +27,8 @@ const orderSchema = new mongoose.Schema({
     stockReserved: { type: Boolean, default: false },
     voucherCode: { type: String, default: null },
     discountAmount: { type: Number, default: 0 },
-    createdAt: { type: Date, default: Date.now }
+    createdAt: { type: Date, default: Date.now },
+    shippingFee: { type: Number, default: 0 },
+    distance: { type: String }
     });
 export default mongoose.model('Order', orderSchema);

@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { Form, Input, Button, Row, Col, Typography, Card, Divider, message, Radio, Space } from 'antd';
+import React, { useState, useEffect, useRef } from 'react';
+import { Form, Input, Button, Row, Col, Typography, Card, Divider, message, Radio, Space, Select } from 'antd';
 import { useCart } from '../context/CartContex.jsx';
 import { useLocation, useNavigate } from 'react-router-dom'; 
 import API from '../utils/axiosClient';
 import { getImageUrl } from '../utils/imageUrl.js';
+import axios from 'axios'; 
 
 const { Title, Text } = Typography;
 
@@ -12,20 +13,30 @@ const Checkout = () => {
   const location = useLocation(); 
   const navigate = useNavigate(); 
   const [form] = Form.useForm();
+  
   const [paymentMethod, setPaymentMethod] = useState('COD');
   const [loading, setLoading] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
-  // --- LOGIC MÃ GIẢM GIÁ (VOUCHER) ---
+  // --- STATE CHO VOUCHER ---
   const [voucherInput, setVoucherInput] = useState(''); 
   const [discountValue, setDiscountValue] = useState(0); 
   const [appliedVoucherCode, setAppliedVoucherCode] = useState(null); 
   const [voucherLoading, setVoucherLoading] = useState(false);
 
+  // --- STATE CHO TÍNH TIỀN SHIP TỰ ĐỘNG ---
+  const [shippingFee, setShippingFee] = useState(0);
+  const [distanceText, setDistanceText] = useState('');
+  const [addressOptions, setAddressOptions] = useState([]); 
+  const [shippingLoading, setShippingLoading] = useState(false);
+  const [isSearching, setIsSearching] = useState(false); // Trạng thái đang gõ tìm địa chỉ
+
+  // Quản lý timeout cho Debounce tìm kiếm
+  const searchTimeoutRef = useRef(null);
+
   const displayItems = location.state?.checkoutItems || cartItems;
   const displayTotalPrice = location.state?.checkoutTotalPrice || globalTotalPrice;
-
-  const finalTotalPrice = Math.max(0, displayTotalPrice - discountValue);
+  const finalTotalPrice = Math.max(0, displayTotalPrice - discountValue + shippingFee);
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 768);
@@ -33,27 +44,85 @@ const Checkout = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  const handleApplyVoucher = async () => {
-    if (!voucherInput.trim()) {
-      return message.warning('Vui lòng nhập mã giảm giá!');
+  // --- LOGIC TÌM KIẾM GỢI Ý ĐỊA CHỈ (OSM) ---
+  const fetchAddress = async (searchText) => {
+    setIsSearching(true);
+    try {
+      const res = await axios.get(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchText)}&countrycodes=vn&limit=5`
+      );
+      const options = res.data.map(item => ({
+        label: item.display_name,
+        value: item.display_name, // Value này sẽ lưu vào form.shippingAddress
+        lat: item.lat,
+        lng: item.lon
+      }));
+      setAddressOptions(options);
+    } catch (error) {
+      console.error("Lỗi lấy gợi ý địa chỉ từ OSM:", error);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const handleSearchAddress = (searchText) => {
+    if (!searchText || searchText.trim().length < 3) {
+      setAddressOptions([]);
+      return;
+    }
+    
+    // Clear timeout cũ nếu người dùng đang gõ liên tục
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
     }
 
+    // Đặt timeout mới (600ms sau khi ngừng gõ mới gọi API)
+    searchTimeoutRef.current = setTimeout(() => {
+      fetchAddress(searchText);
+    }, 600);
+  };
+
+  // --- LOGIC GỌI BACKEND TÍNH TIỀN SHIP ---
+  const handleSelectAddress = async (value, option) => {
+    setShippingLoading(true);
+    try {
+      // Gửi tọa độ lên Backend để tính khoảng cách
+      const res = await API.post('/api/shipping/calculate-fee', {
+        lat: option.lat,
+        lng: option.lng 
+      });
+
+      if (res.data.success) {
+        setShippingFee(res.data.shippingFee);
+        setDistanceText(res.data.distanceText);
+        message.success(`Cập nhật phí ship: +${res.data.shippingFee.toLocaleString()} VNĐ (${res.data.distanceText})`);
+      }
+    } catch (error) {
+      console.error("Lỗi tính tiền ship từ BE:", error);
+      message.error("Không thể tính toán tiền ship. Vui lòng thử chọn địa chỉ khác!");
+      setShippingFee(0);
+      setDistanceText('');
+    } finally {
+      setShippingLoading(false);
+    }
+  };
+
+  // --- LOGIC VOUCHER ---
+  const handleApplyVoucher = async () => {
+    if (!voucherInput.trim()) return message.warning('Vui lòng nhập mã giảm giá!');
     setVoucherLoading(true);
     try {
       const response = await API.post('/api/vouchers/check', {
         code: voucherInput.trim(),
         orderAmount: displayTotalPrice
       });
-
       if (response.data.success) {
         setDiscountValue(response.data.discountValue);
         setAppliedVoucherCode(voucherInput.trim().toUpperCase());
         message.success(`Áp dụng mã thành công! Bạn được giảm ${response.data.discountValue.toLocaleString()} VNĐ`);
       }
     } catch (error) {
-      console.error("Lỗi áp dụng voucher:", error);
-      const errorMsg = error.response?.data?.message || 'Không thể áp dụng mã giảm giá này!';
-      message.error(errorMsg);
+      message.error(error.response?.data?.message || 'Không thể áp dụng mã giảm giá này!');
       setDiscountValue(0);
       setAppliedVoucherCode(null);
     } finally {
@@ -68,9 +137,10 @@ const Checkout = () => {
     message.info('Đã hủy áp dụng mã giảm giá');
   };
 
+  // --- LOGIC THANH TOÁN ---
   const onFinish = async (values) => {
     if (displayItems.length === 0) {
-      return message.warning('Danh sách mặt hàng thanh toán trống. Vui lòng quay lại giỏ hàng!');
+      return message.warning('Giỏ hàng trống. Vui lòng quay lại giỏ hàng!');
     }
 
     setLoading(true);
@@ -78,8 +148,10 @@ const Checkout = () => {
       const orderData = {
         customerName: values.customerName,
         phoneNumber: values.phoneNumber,
-        shippingAddress: values.shippingAddress,
+        shippingAddress: values.shippingAddress, // Gửi full chuỗi địa chỉ
         paymentMethod: paymentMethod,
+        shippingFee: shippingFee, 
+        distance: distanceText,   
         totalPrice: finalTotalPrice, 
         voucherCode: appliedVoucherCode, 
         items: displayItems.map(item => ({
@@ -90,8 +162,6 @@ const Checkout = () => {
         }))
       };
 
-      console.log("Dữ liệu đơn hàng chuẩn bị gửi đi:", orderData);
-
       const response = await API.post('/api/orders', orderData);
 
       if (response.data.success) {
@@ -101,35 +171,29 @@ const Checkout = () => {
 
         if (paymentMethod === 'BANK_TRANSFER') {
           const paymentGateway = response.data.paymentGateway;
-
           if (!paymentGateway?.checkoutUrl || !paymentGateway?.fields) {
-            message.error('Không lấy được thông tin cổng thanh toán SePay.');
-            return;
+            return message.error('Không lấy được thông tin cổng thanh toán.');
           }
-
-          const form = document.createElement('form');
-          form.method = 'POST';
-          form.action = paymentGateway.checkoutUrl;
-          form.style.display = 'none';
+          const formDom = document.createElement('form');
+          formDom.method = 'POST';
+          formDom.action = paymentGateway.checkoutUrl;
+          formDom.style.display = 'none';
 
           Object.entries(paymentGateway.fields).forEach(([key, value]) => {
-            const input = document.createElement('input');
-            input.type = 'hidden';
-            input.name = key;
-            input.value = value ?? '';
-            form.appendChild(input);
+            const inputDom = document.createElement('input');
+            inputDom.type = 'hidden';
+            inputDom.name = key;
+            inputDom.value = value ?? '';
+            formDom.appendChild(inputDom);
           });
-
-          document.body.appendChild(form);
-          form.submit();
+          document.body.appendChild(formDom);
+          formDom.submit();
         } else {
           navigate(`/my-orders?status=success&orderId=${createdOrder._id}`);
         }
       }
     } catch (error) {
-      console.error("Lỗi FE khi đặt hàng:", error);
-      const errorMsg = error.response?.data?.message || 'Có lỗi xảy ra khi xử lý đơn hàng!';
-      message.error(errorMsg);
+      message.error(error.response?.data?.message || 'Có lỗi xảy ra khi xử lý đơn hàng!');
     } finally {
       setLoading(false);
     }
@@ -155,12 +219,28 @@ const Checkout = () => {
     </div>
   );
 
+  const addressSelectField = (
+    <Form.Item name="shippingAddress" label="Địa chỉ nhận hàng (Gõ để tìm kiếm)" rules={[{ required: true, message: 'Vui lòng chọn địa chỉ cụ thể' }]}>
+      <Select
+        showSearch
+        placeholder="Gõ số nhà, tên đường để tự động tính phí ship..."
+        defaultActiveFirstOption={false}
+        showArrow={false}
+        filterOption={false}
+        onSearch={handleSearchAddress}
+        onSelect={handleSelectAddress}
+        notFoundContent={isSearching ? "Đang tìm vị trí..." : "Không tìm thấy (hãy thử gõ chi tiết hơn)"}
+        options={addressOptions}
+        size={isMobile ? "large" : "middle"}
+      />
+    </Form.Item>
+  );
+
   return (
     <div style={{ padding: isMobile ? '16px' : '40px', maxWidth: 1200, margin: '0 auto', paddingBottom: isMobile ? '120px' : '40px' }}>
       <Title level={2}>Thanh toán</Title>
       
       {isMobile ? (
-        /* --- GIAO DIỆN MOBILE (ĐÃ ĐƯỢC FIX) --- */
         <Form form={form} layout="vertical" onFinish={onFinish} initialValues={{ paymentMethod: 'COD' }}>
           <div style={{ marginBottom: 12 }}>
             <Card title="Thông tin giao hàng">
@@ -170,9 +250,7 @@ const Checkout = () => {
               <Form.Item name="phoneNumber" label="Số điện thoại" rules={[{ required: true, message: 'Vui lòng nhập số điện thoại' }]}>
                 <Input placeholder="Nhập số điện thoại" size="large" />
               </Form.Item>
-              <Form.Item name="shippingAddress" label="Địa chỉ nhận hàng" rules={[{ required: true, message: 'Vui lòng nhập địa chỉ' }]}>
-                <Input.TextArea rows={3} placeholder="Số nhà, tên đường, quận/huyện..." />
-              </Form.Item>               
+              {addressSelectField}             
             </Card>
           </div>
 
@@ -201,6 +279,11 @@ const Checkout = () => {
                 </div>
               )}
 
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                <Text>Phí vận chuyển {distanceText && `(${distanceText})`}:</Text>
+                <Text strong>{shippingFee > 0 ? `+${shippingFee.toLocaleString()} VNĐ` : '0đ'}</Text>
+              </div>
+
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div><Title level={5} style={{ margin: 0 }}>Tổng cộng:</Title></div>
                 <div><Title level={5} type="danger" style={{ margin: 0 }}>{finalTotalPrice.toLocaleString()} VNĐ</Title></div>
@@ -218,7 +301,6 @@ const Checkout = () => {
             </Form.Item>
 
             <div style={{ marginTop: 16 }}>
-              {/* Đổi thành htmlType="submit" để kích hoạt sự kiện onFinish của Form bao ngoài */}
               <Button type="primary" htmlType="submit" size="large" block loading={loading}>
                 {paymentMethod === 'BANK_TRANSFER' ? 'CHUYỂN SANG CỔNG THANH TOÁN' : 'XÁC NHẬN ĐẶT HÀNG'}
               </Button>
@@ -226,7 +308,6 @@ const Checkout = () => {
           </div>
         </Form>
       ) : (
-        /* --- GIAO DIỆN DESKTOP --- */
         <Row gutter={32}>
           <Col span={14}>
             <Card title="Thông tin giao hàng">
@@ -237,9 +318,8 @@ const Checkout = () => {
                 <Form.Item name="phoneNumber" label="Số điện thoại" rules={[{ required: true, message: 'Vui lòng nhập số điện thoại' }]}>
                   <Input placeholder="Nhập số điện thoại" />
                 </Form.Item>
-                <Form.Item name="shippingAddress" label="Địa chỉ nhận hàng" rules={[{ required: true, message: 'Vui lòng nhập địa chỉ' }]}>
-                  <Input.TextArea rows={3} placeholder="Số nhà, tên đường, quận/huyện..." />
-                </Form.Item>
+
+                {addressSelectField}
 
                 <Divider orientation="left">Phương thức thanh toán</Divider>
                 <Form.Item name="paymentMethod">
@@ -271,18 +351,22 @@ const Checkout = () => {
               {renderVoucherSection()}
               <Divider style={{ margin: '12px 0' }} />
 
-              {discountValue > 0 && (
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
-                  <Text>Tạm tính:</Text>
-                  <Text>{displayTotalPrice.toLocaleString()}đ</Text>
-                </div>
-              )}
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
+                <Text>Tạm tính:</Text>
+                <Text>{displayTotalPrice.toLocaleString()}đ</Text>
+              </div>
+
               {discountValue > 0 && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
                   <Text>Giảm giá:</Text>
                   <Text type="danger" strong>-{discountValue.toLocaleString()} VNĐ</Text>
                 </div>
               )}
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
+                <Text>Phí vận chuyển {distanceText && `(${distanceText})`}:</Text>
+                <Text strong>{shippingFee > 0 ? `+${shippingFee.toLocaleString()} VNĐ` : '0đ'}</Text>
+              </div>
 
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <Title level={4}>Tổng cộng:</Title>
