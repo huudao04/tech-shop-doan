@@ -17,15 +17,14 @@ const Checkout = () => {
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
   // --- LOGIC MÃ GIẢM GIÁ (VOUCHER) ---
-  const [voucherInput, setVoucherInput] = useState(''); // Lưu ký tự user đang gõ
-  const [discountValue, setDiscountValue] = useState(0); // Số tiền được giảm
-  const [appliedVoucherCode, setAppliedVoucherCode] = useState(null); // Mã đã áp dụng thành công
+  const [voucherInput, setVoucherInput] = useState(''); 
+  const [discountValue, setDiscountValue] = useState(0); 
+  const [appliedVoucherCode, setAppliedVoucherCode] = useState(null); 
   const [voucherLoading, setVoucherLoading] = useState(false);
 
   const displayItems = location.state?.checkoutItems || cartItems;
   const displayTotalPrice = location.state?.checkoutTotalPrice || globalTotalPrice;
 
-  // Tính số tiền cuối cùng sau khi đã trừ đi khoản giảm giá (không âm)
   const finalTotalPrice = Math.max(0, displayTotalPrice - discountValue);
 
   useEffect(() => {
@@ -34,7 +33,6 @@ const Checkout = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Hàm xử lý kiểm tra và áp dụng mã giảm giá
   const handleApplyVoucher = async () => {
     if (!voucherInput.trim()) {
       return message.warning('Vui lòng nhập mã giảm giá!');
@@ -42,7 +40,6 @@ const Checkout = () => {
 
     setVoucherLoading(true);
     try {
-      // Gọi lên API check voucher đã viết dưới BE
       const response = await API.post('/api/vouchers/check', {
         code: voucherInput.trim(),
         orderAmount: displayTotalPrice
@@ -57,7 +54,6 @@ const Checkout = () => {
       console.error("Lỗi áp dụng voucher:", error);
       const errorMsg = error.response?.data?.message || 'Không thể áp dụng mã giảm giá này!';
       message.error(errorMsg);
-      // Reset lại nếu áp dụng thất bại
       setDiscountValue(0);
       setAppliedVoucherCode(null);
     } finally {
@@ -65,7 +61,6 @@ const Checkout = () => {
     }
   };
 
-  // Hàm hủy bỏ mã đã áp dụng
   const handleCancelVoucher = () => {
     setVoucherInput('');
     setDiscountValue(0);
@@ -85,8 +80,8 @@ const Checkout = () => {
         phoneNumber: values.phoneNumber,
         shippingAddress: values.shippingAddress,
         paymentMethod: paymentMethod,
-        totalPrice: finalTotalPrice, // Bắn số tiền thực tế sau giảm giá lên BE
-        voucherCode: appliedVoucherCode, // Gửi kèm mã voucher để BE lưu vết / cắn số lượng
+        totalPrice: finalTotalPrice, 
+        voucherCode: appliedVoucherCode, 
         items: displayItems.map(item => ({
           productId: item._id || item.id, 
           name: item.name,
@@ -140,7 +135,6 @@ const Checkout = () => {
     }
   };
 
-  // UI Khối Nhập Voucher dùng chung cho cả bản Mobile và Desktop
   const renderVoucherSection = () => (
     <div style={{ margin: '16px 0' }}>
       <Text strong>Mã giảm giá (Voucher)</Text>
@@ -164,21 +158,21 @@ const Checkout = () => {
   return (
     <div style={{ padding: isMobile ? '16px' : '40px', maxWidth: 1200, margin: '0 auto', paddingBottom: isMobile ? '120px' : '40px' }}>
       <Title level={2}>Thanh toán</Title>
+      
       {isMobile ? (
-        <>
+        /* --- GIAO DIỆN MOBILE (ĐÃ ĐƯỢC FIX) --- */
+        <Form form={form} layout="vertical" onFinish={onFinish} initialValues={{ paymentMethod: 'COD' }}>
           <div style={{ marginBottom: 12 }}>
             <Card title="Thông tin giao hàng">
-              <Form form={form} layout="vertical" onFinish={onFinish} initialValues={{ paymentMethod: 'COD' }}>
-                <Form.Item name="customerName" label="Họ và tên" rules={[{ required: true, message: 'Vui lòng nhập họ tên' }]}>
-                  <Input placeholder="Nhập tên người nhận" size="large" />
-                </Form.Item>
-                <Form.Item name="phoneNumber" label="Số điện thoại" rules={[{ required: true, message: 'Vui lòng nhập số điện thoại' }]}>
-                  <Input placeholder="Nhập số điện thoại" size="large" />
-                </Form.Item>
-                <Form.Item name="shippingAddress" label="Địa chỉ nhận hàng" rules={[{ required: true, message: 'Vui lòng nhập địa chỉ' }]}>
-                  <Input.TextArea rows={3} placeholder="Số nhà, tên đường, quận/huyện..." />
-                </Form.Item>               
-              </Form>
+              <Form.Item name="customerName" label="Họ và tên" rules={[{ required: true, message: 'Vui lòng nhập họ tên' }]}>
+                <Input placeholder="Nhập tên người nhận" size="large" />
+              </Form.Item>
+              <Form.Item name="phoneNumber" label="Số điện thoại" rules={[{ required: true, message: 'Vui lòng nhập số điện thoại' }]}>
+                <Input placeholder="Nhập số điện thoại" size="large" />
+              </Form.Item>
+              <Form.Item name="shippingAddress" label="Địa chỉ nhận hàng" rules={[{ required: true, message: 'Vui lòng nhập địa chỉ' }]}>
+                <Input.TextArea rows={3} placeholder="Số nhà, tên đường, quận/huyện..." />
+              </Form.Item>               
             </Card>
           </div>
 
@@ -214,27 +208,26 @@ const Checkout = () => {
             </Card>
 
             <Divider orientation="left">Phương thức thanh toán</Divider>
-            <Form form={form} component={false}>
-              <Form.Item name="paymentMethod">
-                <Radio.Group onChange={(e) => setPaymentMethod(e.target.value)} value={paymentMethod}>
-                  <Space direction="vertical">
-                    <Radio value="COD">Thanh toán khi nhận hàng (COD)</Radio>
-                    <Radio value="BANK_TRANSFER">Chuyển khoản ngân hàng thanh toán bằng Qr Code</Radio>
-                  </Space>
-                </Radio.Group>
-              </Form.Item>
-            </Form>
+            <Form.Item name="paymentMethod">
+              <Radio.Group onChange={(e) => setPaymentMethod(e.target.value)} value={paymentMethod}>
+                <Space direction="vertical">
+                  <Radio value="COD">Thanh toán khi nhận hàng (COD)</Radio>
+                  <Radio value="BANK_TRANSFER">Chuyển khoản ngân hàng thanh toán bằng Qr Code</Radio>
+                </Space>
+              </Radio.Group>
+            </Form.Item>
 
             <div style={{ marginTop: 16 }}>
-              <Button type="primary" size="large" block loading={loading} onClick={() => form.submit()}>
+              {/* Đổi thành htmlType="submit" để kích hoạt sự kiện onFinish của Form bao ngoài */}
+              <Button type="primary" htmlType="submit" size="large" block loading={loading}>
                 {paymentMethod === 'BANK_TRANSFER' ? 'CHUYỂN SANG CỔNG THANH TOÁN' : 'XÁC NHẬN ĐẶT HÀNG'}
               </Button>
             </div>
           </div>
-        </>
+        </Form>
       ) : (
+        /* --- GIAO DIỆN DESKTOP --- */
         <Row gutter={32}>
-          {/* Cột trái: Form thông tin khách hàng */}
           <Col span={14}>
             <Card title="Thông tin giao hàng">
               <Form form={form} layout="vertical" onFinish={onFinish} initialValues={{ paymentMethod: 'COD' }}>
@@ -265,7 +258,6 @@ const Checkout = () => {
             </Card>
           </Col>
 
-          {/* Cột phải: Tóm tắt đơn hàng */}
           <Col span={10}>
             <Card title="Đơn hàng của bạn">
               {displayItems.map(item => (
