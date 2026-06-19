@@ -65,7 +65,7 @@ const AdminOrders = () => {
   }, [filters]);
 
   useEffect(() => {
-    const socket = io(import.meta.env.VITE_SOCKET_URL);
+    const socket = io(import.meta.env.VITE_API_URL);
     socket.emit('join_room', { role: 'admin' });
     socket.on('admin_order_updated', (data) => {
       message.info(`Đơn hàng ${data.orderId} vừa được khách thanh toán tự động! 💰`);
