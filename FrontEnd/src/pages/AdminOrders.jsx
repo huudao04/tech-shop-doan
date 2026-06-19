@@ -65,7 +65,7 @@ const AdminOrders = () => {
   }, [filters]);
 
   useEffect(() => {
-    const socket = io('https://backend-techshop.onrender.com' || 'http://localhost:5000');
+    const socket = io(import.meta.env.VITE_SOCKET_URL);
     socket.emit('join_room', { role: 'admin' });
     socket.on('admin_order_updated', (data) => {
       message.info(`Đơn hàng ${data.orderId} vừa được khách thanh toán tự động! 💰`);

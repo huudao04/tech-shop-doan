@@ -78,7 +78,7 @@ const UserOrders = () => {
     }, [filters]);
 
     useEffect(() => {
-    const socket = io('https://backend-techshop.onrender.com' || 'http://localhost:5000'); 
+    const socket = io(import.meta.env.VITE_SOCKET_URL); 
     const currentUser = JSON.parse(localStorage.getItem('user')); 
     if (currentUser?._id) {
       socket.emit('join_room', { userId: currentUser._id, role: 'customer' });
