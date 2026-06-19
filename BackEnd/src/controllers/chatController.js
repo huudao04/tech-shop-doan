@@ -28,39 +28,55 @@ export const handleChat = async (req, res) => {
   }
 
  try {
-    const chatQuery = buildChatHistoryQuery(chatIdentity); // tìm lịch sử chat dựa theo userId hoặc sessionId
-    const chatHistory = chatQuery ? await ChatHistory.findOne(chatQuery).lean() : null; // lấy lịch sử từ db
+    const chatQuery = buildChatHistoryQuery(chatIdentity); 
+    const chatHistory = chatQuery ? await ChatHistory.findOne(chatQuery).lean() : null; 
     const recentMessages = chatHistory ? chatHistory.messages.slice(-6) : [];
     const orderCode = extractOrderCodeFromMessage(userQuestion); 
 
-    // PHÂN LOẠI INTENT CHAT (Chưa bốc hết sản phẩm để tiết kiệm Token)
+    // PHÂN LOẠI INTENT CHAT
     const chatIntent = await detectChatIntent({ message: userQuestion, recentMessages });
 
-    // TỐI ƯU DUNG LƯỢNG DB: Lọc sản phẩm thông minh theo Intent
+    // TỐI ƯU DUNG LƯỢNG DB
     let productsForContext = [];
     const productQuery = (chatIntent.query || userQuestion).trim();
     const productMatches = await buildBestProductMatches(productQuery);
     const isFollowUpProductAsk = /\b(xem|cho tôi xem|cho mình xem|show|ảnh|hình|hinh|chi tiết|chi tiet|details|image|photo)\b/i.test(userQuestion);
 
-    if (chatIntent.intent === 'product') {
+    // KIỂM TRA Ý ĐỊNH SO SÁNH SẢN PHẨM
+    const isComparison = /\b(so sánh|so sanh|khác gì|khac gi|hơn|kém|hon|kem|đối chiếu|doi chieu)\b/i.test(userQuestion);
+
+    if (isComparison) {
+      // VÁ LỖI: Ưu tiên đưa các sản phẩm đã match được từ khóa vào trước để AI so sánh chính xác
+      let compProducts = productMatches && productMatches.length > 0 ? [...productMatches] : [];
+      
+      // Nếu chưa đủ 10 món, lấy thêm các sản phẩm mới nhất
+      if (compProducts.length < 10) {
+        const excludeIds = compProducts.map(p => p._id);
+        const additional = await Product.find(
+          { _id: { $nin: excludeIds } }, 
+          'name price stock description category brand'
+        ).sort({ createdAt: -1 }).limit(10 - compProducts.length).lean();
+        compProducts = compProducts.concat(additional);
+      }
+      productsForContext = compProducts;
+    } else if (chatIntent.intent === 'product') {
       if (productMatches && productMatches.length > 0) {
         productsForContext = productMatches.slice(0, 5); 
       } else {
-        productsForContext = await Product.find({}, 'name price stock description category brand image').limit(5).lean();
+        productsForContext = await Product.find({}, 'name price stock description category brand').limit(5).lean();
       }
     } else if (chatIntent.intent === 'product-report') {
       productsForContext = await Product.find({}, 'name price stock description category brand').limit(3).lean();
     } else {
-      productsForContext = [];
+      productsForContext = await Product.find({}, 'name price stock description category brand').sort({ createdAt: -1 }).limit(5).lean();
     }
+    
     const wantsOrderInfo = isOrderQuestion(userQuestion);
     const currentUserId = chatIdentity.userId;
     const queryText = userQuestion.toLowerCase();
 
-    // XỬ LÝ Ý ĐỊNH BÁO CÁO SẢN PHẨM (BÁN CHẠY, Ế, ĐẮT, RẺ, HỎI THEO TIỀN)
+    // XỬ LÝ Ý ĐỊNH BÁO CÁO SẢN PHẨM
     if (chatIntent.intent === 'product-report') {
-      
-      // Trường hợp: Đắt nhất
       if (queryText.includes('đắt nhất') || queryText.includes('giá cao nhất') || queryText.includes('khủng nhất')) {
         const topPrice = await Product.findOne({}).sort({ price: -1 }).lean();
         return res.json({
@@ -91,18 +107,6 @@ export const handleChat = async (req, res) => {
           content: `Dưới đây là danh sách những sản phẩm bán chạy nhất tại hệ thống TechShop, được đông đảo người dùng lựa chọn:`,
           action: 'product-results',
           products: bestSellers,
-          sessionId: chatIdentity.sessionId || null,
-          userId: chatIdentity.userId || null
-        });
-      }
-
-      // Trường hợp: Bán tệ nhất (ế nhất)
-      if (queryText.includes('tệ nhất') || queryText.includes('bán ế') || queryText.includes('ít mua nhất') || queryText.includes('chậm nhất')) {
-        const worstSellers = await Product.find({}).sort({ sold: 1 }).limit(3).lean();
-        return res.json({
-          content: `Đây là những sản phẩm đang có số lượng bán ra ít nhất tại cửa hàng hiện tại để bạn tham khảo:`,
-          action: 'product-results',
-          products: worstSellers,
           sessionId: chatIdentity.sessionId || null,
           userId: chatIdentity.userId || null
         });
@@ -160,7 +164,7 @@ export const handleChat = async (req, res) => {
         });
       }
 
-      // Khách tìm hóa đơn của riêng họ theo khoảng giá
+        // Khách tìm hóa đơn của riêng họ theo khoảng giá
       if (queryText.includes('của tôi') || queryText.includes('mình')) {
         if (!chatIdentity.userId) {
           return res.json({ 
@@ -203,7 +207,7 @@ export const handleChat = async (req, res) => {
       }
     }
 
-    // XỬ LÝ Ý ĐỊNH THỐNG KÊ KHÁCH HÀNG VIP MUA NHIỀU TIỀN NHẤT
+    // XỬ LÝ Ý ĐỊNH THỐNG KÊ KHÁCH HÀNG VIP
     if (chatIntent.intent === 'customer-report') {
       const topCustomerAggregation = await Order.aggregate([
         { $match: { status: 'Đã nhận' } },
@@ -273,7 +277,8 @@ export const handleChat = async (req, res) => {
       });
     }
 
-    if ((chatIntent.intent === 'product' || isFollowUpProductAsk) && productMatches.length > 0) {
+    // VÁ LỖI: Chặn return sớm ra UI nếu khách hàng đang muốn so sánh
+    if (!isComparison && (chatIntent.intent === 'product' || isFollowUpProductAsk) && productMatches.length > 0) {
       const productResults = productMatches.map((product) => ({
         _id: product._id?.toString?.() || String(product._id),
         name: product.name,
@@ -303,6 +308,7 @@ export const handleChat = async (req, res) => {
     } else {
       productContext += "Hiện tại hệ thống đang cập nhật danh sách sản phẩm.";
     }
+    
     let questionEmbedding = [];
     try {
       questionEmbedding = await getEmbedding(userQuestion, 'query');
@@ -315,7 +321,6 @@ export const handleChat = async (req, res) => {
       .map((document) => ({
         fileName: document.fileName || 'Tài liệu không rõ tên',
         content: document.content || '',
-        // Nếu không lấy được embedding, mặc định score = 0 để không bị crash hàm cosineSimilarity
         score: questionEmbedding.length > 0 ? cosineSimilarity(questionEmbedding, document.embedding || []) : 0
       }))
       .filter((document) => document.score > 0.45)
@@ -324,9 +329,15 @@ export const handleChat = async (req, res) => {
       .map((document) => `[${document.fileName}] (${document.score.toFixed(3)}): ${document.content}`)
       .join('\n\n');
 
-      const systemInstructionConfig = `Bạn là một nhân viên tư vấn bán hàng trực tuyến xuất sắc, thân thiện và am hiểu công nghệ tại cửa hàng "TechShop".
-    Nhiệm vụ trọng tâm của bạn là sử dụng ngữ cảnh danh sách sản phẩm được cung cấp bên dưới để trả lời các câu hỏi từ khách hàng một cách ngắn gọn, thuyết phục, tập trung chốt đơn.
-    Nếu khách hàng hỏi các thông tin bên ngoài (như thời tiết, tin tức, sự kiện...), bạn hãy sử dụng công cụ tìm kiếm được tích hợp để trả lời chính xác, sau đó khéo léo dẫn dắt họ quay lại sản phẩm của TechShop.
+    const systemInstructionConfig = `Bạn là một nhân viên tư vấn bán hàng trực tuyến xuất sắc, thân thiện và am hiểu sâu sắc về công nghệ tại cửa hàng "TechShop".
+    Tôn chỉ của bạn là: "Cung cấp giá trị và kiến thức cho khách hàng trước, bán hàng sau".
+
+    - Nếu khách hàng hỏi về một sản phẩm CÓ trong "DỮ LIỆU CỬA HÀNG HIỆN TẠI": Tư vấn nhiệt tình, nêu bật ưu điểm và hỗ trợ chốt đơn.
+    - Nếu khách hàng hỏi thông tin/tư vấn về một sản phẩm KHÔNG CÓ trong hệ thống (ví dụ: PlayStation 5, Xbox...): 
+        + Vẫn phải tư vấn, cung cấp thông tin chi tiết, đánh giá hoặc giải đáp thắc mắc của họ về sản phẩm đó một cách chuyên nghiệp (sử dụng công cụ Google Search nếu cần).
+        + Chỉ sau khi đã trả lời xong câu hỏi của khách, mới lịch sự thông báo TechShop hiện chưa kinh doanh mặt hàng này.
+        + Tùy ngữ cảnh, có thể gợi ý NHẸ NHÀNG một sản phẩm có tính năng tương đương đang có tại shop (ví dụ: khách hỏi máy chơi game console thì gợi ý laptop gaming cấu hình cao), tuyệt đối không gượng ép mồi chài sản phẩm không liên quan (như điện thoại).
+    - Nếu khách hàng yêu cầu so sánh 2 sản phẩm: Hãy liệt kê các thông số quan trọng cạnh nhau, nêu rõ ưu điểm của từng sản phẩm.
 
     --- DỮ LIỆU CỬA HÀNG HIỆN TẠI (TỪ DATABASE) ---
     ${productContext}
@@ -334,6 +345,7 @@ export const handleChat = async (req, res) => {
     --- DỮ LIỆU TÀI LIỆU BỔ SUNG (RAG) ---
     ${matchedKnowledgeContext || 'Chưa có tài liệu bổ sung phù hợp.'}
     ---------------------------------`;
+    
     const userPrompt = `LỊCH SỬ HỘI THOẠI GẦN ĐÂY:
     ${recentMessages || 'Chưa có lịch sử hội thoại trước đó.'}
 

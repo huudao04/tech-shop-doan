@@ -133,9 +133,8 @@ export const buildBestProductMatches = async (message) => {
   const normalizedMessage = message.trim();
   if (!normalizedMessage) return [];
 
+  // 1. Ưu tiên tìm kiếm chính xác nguyên cụm (như code cũ của bạn)
   const escapedQuery = normalizedMessage.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const productNameRegex = new RegExp(escapedQuery, 'i');
-
   const exactMatches = await Product.find({ name: { $regex: `^${escapedQuery}$`, $options: 'i' } })
     .select('_id name price stock description category brand image')
     .limit(3)
@@ -143,9 +142,36 @@ export const buildBestProductMatches = async (message) => {
 
   if (exactMatches.length > 0) return exactMatches;
 
-  return Product.find({ name: { $regex: productNameRegex } })
+  // 2. Lọc bỏ các từ nối tiếng Việt thường gặp khi chat so sánh
+  const stopWords = ['so sánh', 'và', 'hoặc', 'với', 'giữa', 'khác gì', 'hơn', 'kém'];
+  let cleanQuery = normalizedMessage.toLowerCase();
+  stopWords.forEach(word => {
+    // Xóa các từ nối để chỉ giữ lại tên sản phẩm
+    cleanQuery = cleanQuery.replace(new RegExp(`\\b${word}\\b`, 'gi'), ' ');
+  });
+
+  // 3. Tách chuỗi thành mảng các từ khóa (VD: ["iphone", "15", "samsung", "s24"])
+  const keywords = cleanQuery.split(/,|\s+/).filter(k => k.trim().length > 1);
+
+  if (keywords.length === 0) {
+     return Product.find({ name: { $regex: new RegExp(escapedQuery, 'i') } })
+      .select('_id name price stock description category brand image')
+      .limit(3)
+      .lean();
+  }
+
+  // 4. Xây dựng mảng Regex cho từng từ khóa riêng lẻ
+  const regexArray = keywords.map(kw => {
+    const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(escaped, 'i');
+  });
+
+  // 5. Tìm bằng toán tử $or: Chỉ cần tên sản phẩm chứa 1 trong các từ khóa là lấy
+  return Product.find({ 
+      $or: regexArray.map(regex => ({ name: { $regex: regex } }))
+    })
     .select('_id name price stock description category brand image')
-    .limit(3)
+    .limit(8) // Tăng limit để lấy đủ dải sản phẩm cho 2 hãng
     .lean();
 };
 
